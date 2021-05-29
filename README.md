@@ -1,2 +1,6 @@
 # SAM_Refiner
-Program for gathering variant information from a SAM formated files.
+A program for gathering variant information from a SAM formated files.  SAM_Refiner requires a python iterator to run.
+
+## Default Usage
+	python SAM_Refiner -r reference.fasta
+
