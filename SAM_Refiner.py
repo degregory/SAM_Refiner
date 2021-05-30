@@ -899,7 +899,7 @@ def SAMparse(file): # process SAM files
 def cvdeconv(samp, covardict, seqdict): # covar deconvolution process
 
     passedseqs = {}
-    for seq in seqdict:
+    for seq in seqdict: # pass check for actual : expected abundance
         if seq != 'total' and seq != 'singles':
             if len(seq.split(' ')) == 1:
                 passedseqs[seq] = max(1, args.beta)
@@ -925,7 +925,7 @@ def cvdeconv(samp, covardict, seqdict): # covar deconvolution process
     else:
         min_abund = args.min_abundance1
 
-    if args.pass_out == 1:
+    if args.pass_out == 1: # write passed covars to file if enabled
         fh_pass = open(samp+"_covar_pass.tsv", "w")
         fh_pass.write(f"{samp}({covardict['total']})\tCount\tAbundance\tPass Ratio\n")
         for seq in passedseqs:
@@ -933,12 +933,13 @@ def cvdeconv(samp, covardict, seqdict): # covar deconvolution process
                 fh_pass.write(f"{seq}\t{covardict[seq]}\t{(covardict[seq]/covardict['total']):.3f}\t{passedseqs[seq]:.3f}\n")
         fh_pass.close
 
+    # sort passed covars
     lensortedpassed = sorted(passedseqs, key = lambda key : len(key.split(' ')), reverse=True)
     ratiolensortedpassed = sorted(lensortedpassed, key = lambda key : passedseqs[key], reverse = True)
     sortedsingles = sorted(covardict['singles'], key = covardict['singles'].__getitem__)
 
     deconved = {}
-    for seq in ratiolensortedpassed:
+    for seq in ratiolensortedpassed: # reassign counts
         # print(seq)
         singles = seq.split(' ')
         first = 0
@@ -962,7 +963,7 @@ def cvdeconv(samp, covardict, seqdict): # covar deconvolution process
     fh_deconv = open(samp+"_covar_deconv.tsv", "w")
     fh_deconv.write(f"{samp}({covardict['total']}) | ({newtotal})\tCount\tAbundance\n")
     sorted_deconved = sorted(deconved, key = deconved.__getitem__, reverse = True)
-    for seq in sorted_deconved:
+    for seq in sorted_deconved: # write deconv
         if deconved[seq] >= min_abund:
             fh_deconv.write(f"{seq}\t{deconved[seq]}\t{(deconved[seq]/newtotal):.3f}\n")
     fh_deconv.close
@@ -974,16 +975,16 @@ def cvdeconv(samp, covardict, seqdict): # covar deconvolution process
 def dechim(seqs): # processing sequence dictionary to remove chimeras
     total = seqs['total']
     del seqs['total']
-    sorted_seqs = sorted(seqs, key=seqs.__getitem__)
+    sorted_seqs = sorted(seqs, key=seqs.__getitem__) # sort sequences by abundance, least to greatest
     chimeras = []
     for seq in sorted_seqs:
         pot_chim = ['Reference']+seq.split()+['Reference']
         chim_halves = []
-        for i in range(0, len(pot_chim)-1):
+        for i in range(0, len(pot_chim)-1): # create dimera halves
             chim_halves.append([pot_chim[:i+1], pot_chim[i+1:]])
         parent_pairs = []
 
-        for dimera in chim_halves:
+        for dimera in chim_halves: # check for potential parents
 
             pot_left = []
             pot_rt = []
@@ -999,7 +1000,7 @@ def dechim(seqs): # processing sequence dictionary to remove chimeras
                             pot_rt.append(pot_par)
 
             if (len(pot_left) > 0 and len(pot_rt) > 0 ):
-                for left_par in pot_left:
+                for left_par in pot_left: # check potential parents' pairing
                     for rt_par in pot_rt:
                         if left_par != rt_par:
                             left_break = left_par[lft_len]
@@ -1020,31 +1021,24 @@ def dechim(seqs): # processing sequence dictionary to remove chimeras
                                         rt_break_POS += c
                                     else:
                                         break
-                                # if 'Del' in rt_break:
-                                    # rt_break_POS = rt_break.split('-')[1].split('D')[0]
-                                # elif 'insert' in rt_break:
-                                    # rt_break_POS = rt_break.split('-')[0]
-                                # elif 'r' in
-                                # else:
-                                    # rt_break_POS = rt_break.split('(')[0][:-1]
 
                                 if int(left_break_POS) > int(rt_break_POS):
                                     parent_pairs.append([' '.join(left_par[1:-1]), ' '.join(rt_par[1:-1])])
 
         par_tot_abund = 0
         pair_probs = []
-        for parents in parent_pairs:
+        for parents in parent_pairs: # calc 'expected' abundance
             pair_prob = (seqs[parents[0]] / total) * (seqs[parents[1]] / total)
             par_tot_abund += pair_prob
             pair_probs.append(pair_prob)
 
         recomb_count = par_tot_abund * total
 
-        if not seqs[seq] >= recomb_count * args.alpha:
+        if not seqs[seq] >= recomb_count * args.alpha: # chimera check
             redist_count = float(seqs[seq])
             chimeras.append(seq)
             seqs[seq] = 0
-            if args.redist == 1:
+            if args.redist == 1: # redist counts of chimera
                 toadd = {}
                 for i in range(0, len(parent_pairs)):
                     # abundx = (( seqs[parent_pairs[i][0]] / total ) * ( seqs[parent_pairs[i][1]] / total ))
@@ -1055,7 +1049,7 @@ def dechim(seqs): # processing sequence dictionary to remove chimeras
 
 
 
-    for chim in chimeras:
+    for chim in chimeras: # remove chimeras
         del seqs[chim]
 
     total = sum(seqs.values())
@@ -1070,7 +1064,7 @@ def chimrm(samp, seqs): # chimera removed process
 
     pre_len = len(seqs)
     inf_loop_shield = 0
-    while True:
+    while True: # send sequences for chimera removal while chimeras are still found
         dechim(seqs)
         post_len = len(seqs)
         inf_loop_shield += 1
@@ -1091,7 +1085,7 @@ def chimrm(samp, seqs): # chimera removed process
     fh_dechime = open(f"{samp}_a{args.alpha}f{args.foldab}rd{args.redist}_chim_rm.tsv",'w')
     fh_dechime.write(f"{samp}({int(total)})\n")
     fh_dechime.write("Sequences\tCount\tAbundance\n")
-    for seq in seqs:
+    for seq in seqs: # write chim_rm seqs
         abund = seqs[seq]/total
         if seqs[seq] >= min_abund:
             fh_dechime.write(f"{seq}\t{round(seqs[seq])}\t{abund:.3f}\n")
