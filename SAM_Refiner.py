@@ -1,7 +1,7 @@
 #!/bin/env python3
 # Writen by Devon Gregory with assistance from Christopher Bottoms
 # University of Missouri
-# Licence TBD
+# Distributed under GNU GENERAL PUBLIC LICENSE v3
 import os
 import sys
 import argparse
@@ -12,7 +12,7 @@ from pathlib import Path
 
 DEBUG = False
 
-
+# process for collecing command line arguments
 def arg_parser():
 
     parser = argparse.ArgumentParser(
@@ -140,13 +140,13 @@ def arg_parser():
         choices=[0, 1],
         help='Enable/Disable (1/0) collection step, default enabled (--collect 1)'
     )
-    parser.add_argument(
-        '--sams',
-        type=int,
-        default=1,
-        choices=[0, 1],
-        help='Enable/Disable (1/0) sam processing, default enabled (--sams 1)'
-    )
+    # parser.add_argument(
+        # '--sams',
+        # type=int,
+        # default=1,
+        # choices=[0, 1],
+        # help='Enable/Disable (1/0) sam processing, default enabled (--sams 1)'
+    # )
     parser.add_argument(
         '--nt_call',
         type=int,
@@ -205,17 +205,17 @@ def arg_parser():
 
     args = parser.parse_args()
 
-
+# checking for proper range of some parameters and consistency/compatibility
     if args.wgs == 1:
         if args.deconv == 1 or args.chim_rm == 1:
             args.deconv = 0
             args.chim_rm = 0
             print('WGS mode enabled, disabling chimera removal methods')
 
-    if args.sams == 1:
-        if not args.ref:
-            print('Must have a reference(-r, --referecne) to parse sams, skipping sam parsing')
-            args.sams = 0
+    # if args.sams == 1:
+        # if not args.ref:
+            # print('Must have a reference(-r, --referecne) to parse sams, skipping sam parsing')
+            # args.sams = 0
 
     if args.min_abundance1 < 0:
         print(f"--min_abundance1 must be non-negative, defaulting to 0.001")
@@ -272,7 +272,7 @@ def arg_parser():
 
     return(args)
 
-def get_ref():
+def get_ref(): # get the reference ID and sequence from the FASTA file.  Will only get the first.
 
     n=0
     refID = ''
@@ -289,7 +289,7 @@ def get_ref():
 
     return(refID, refseq)
 
-def AAcall(codon):
+def AAcall(codon): # amino acid / codon dictionary to return encoded AAs
     AAdict = {
         'TTT' : 'F',
         'TTC' : 'F',
@@ -365,7 +365,7 @@ def AAcall(codon):
 
     return(AA)
 
-def singletCodon(ntPOS, nt):
+def singletCodon(ntPOS, nt): # process to return the AA and protein seq. position based on the reference and provided nt seq position and nt
     AAPOS = (ntPOS-1)//3
     AAmod = (ntPOS-1)%3
     codon = ""
@@ -379,7 +379,7 @@ def singletCodon(ntPOS, nt):
 
     return(AAPOS+1, AAcall(codon))
 
-def getCombos(qlist, clen):
+def getCombos(qlist, clen): # returns combinations of single polymorphisms in a sequence
     combos = []
     if (clen == 0 or clen > len(qlist)):
         clen = len(qlist)
@@ -388,7 +388,7 @@ def getCombos(qlist, clen):
             combos.append(' '.join(comb))
     return(combos)
 
-def SAMparse(file):
+def SAMparse(file): # process SAM files
     samp=file.name[0: -4]
     print(f"Starting {samp} processing")
     nt_call_dict_dict = {}
@@ -402,13 +402,13 @@ def SAMparse(file):
 
 
     for line in file:
-        if not line.startswith('@'):
+        if not line.startswith('@'): # ignore header lines
             splitline = line.split("\t")
-            if ref[0].startswith(splitline[2]):
-                if int(splitline[4]) > 0:
+            if ref[0].startswith(splitline[2]): # check map ID matches referecne ID
+                if int(splitline[4]) > 0:  # Check mapping score is positive
 
                     abund_count=1
-                    if args.use_count == 1:
+                    if args.use_count == 1: # get the unique sequence counts
                         if '-' in splitline[0] and '=' in splitline[0]:
                             eq_split = splitline[0].split('=')
                             dash_split = splitline[0].split('-')
@@ -453,7 +453,7 @@ def SAMparse(file):
                     q_pars_pos = 0
                     mutations = []
 
-                    for C in CIGAR:
+                    for C in CIGAR: # process sequence based on standard CIGAR line
                         if C == 'M' or C == 'I' or C == 'D' or C == 'S' or C == 'H':
                             if C == 'S':
                                 query_pos = query_pos + run_length
@@ -542,7 +542,7 @@ def SAMparse(file):
                             run_length = (10 * run_length) + int(C)
                     # END CIGAR PARSE
 
-                    if len(mutations) == 0:
+                    if len(mutations) == 0: # record reference counts
                         if args.wgs == 0:
                             try:
                                 seq_species['Reference'] += abund_count
@@ -554,13 +554,13 @@ def SAMparse(file):
                             except:
                                 seq_species[str(POS)+' Ref '+str(POS+q_pars_pos)] = abund_count
 
-                    else:
+                    else: # record variants and counts
                         if args.AAreport == 1 and args.AAcodonasMNP == 1:
                             codonchecked = []
                             codon = ''
                             skip = 0
                             MNP = ''
-                            for i in range(0, len(mutations)):
+                            for i in range(0, len(mutations)): # checking for MNP
                                 if 'Del' in mutations[i] or 'insert' in mutations[i]:
                                     codonchecked.append(mutations[i])
                                 elif skip > 0:
@@ -632,7 +632,7 @@ def SAMparse(file):
 
                     if lastPOS < POS+q_pars_pos:
                         lastPOS = POS+q_pars_pos
-                    for i in range(POS, POS+q_pars_pos):
+                    for i in range(POS, POS+q_pars_pos): # update coverage
                         try:
                             coverage[i] += abund_count
                         except:
@@ -652,7 +652,7 @@ def SAMparse(file):
         else:
             min_abund = args.min_abundance1 / sam_read_count
 
-        if args.seq == 1:
+        if args.seq == 1: # output the sequence
             seq_fh = open(samp+'_unique_seqs.tsv', "w")
             seq_fh.write(samp+"("+str(sam_read_count)+")\n")
             seq_fh.write("Unique Sequence\tCount\tAbundance\n")
@@ -674,14 +674,12 @@ def SAMparse(file):
             # END SEQ OUT
             print(f"End unqiue seq out for {samp}")
 
-        if args.indel == 1 and len(indel_dict) > 0:
-            indel_fh = open(samp+'_indels.tsv', "w")
-            indel_fh.write(samp+"("+str(sam_read_count)+")\n")
-            indel_fh.write("Indel\tCount\tAbundance\n")
+        if args.indel == 1 and len(indel_dict) > 0: # output indels, if there are any
             sorted_indels = sorted(indel_dict, key=indel_dict.__getitem__, reverse=True)
+            indels_to_write = []
             for key in sorted_indels:
                 if indel_dict[key] / sam_read_count >= min_abund and args.wgs == 0:
-                    indel_fh.write(f"{key}\t{indel_dict[key]}\t{(indel_dict[key]/sam_read_count):.3f}\n")
+                    indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key]/sam_read_count):.3f}\n")
                 elif args.wgs == 1:
                     indelPOS = ''
                     for c in key:
@@ -691,13 +689,22 @@ def SAMparse(file):
                             break
                     indelPOS = int(indelPOS)
                     if indel_dict[key] / coverage[indelPOS] >= min_abund:
-                        indel_fh.write(f"{key}\t{indel_dict[key]}\t{(indel_dict[key] / coverage[indelPOS]):.3f}\n")
-                    
-            indel_fh.close()
+                        indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key] / coverage[indelPOS]):.3f}\n")
+                    else:
+                        break
+                else:
+                    break
+            if len(indels_to_write) > 0:
+                indel_fh = open(samp+'_indels.tsv', "w")
+                indel_fh.write(samp+"("+str(sam_read_count)+")\n")
+                indel_fh.write("Indel\tCount\tAbundance\n")
+                for indel_entry in indels_to_write:
+                    indel_fh.write(indel_entry)
+                indel_fh.close()
             # END INDEL OUT
             print(f"End indel out for {samp}")
 
-        if args.nt_call == 1:
+        if args.nt_call == 1: # out put nt calls
             ntcall_fh = open(samp+'_nt_calls.tsv', "w")
             ntcall_fh.write(samp+"("+str(sam_read_count)+")\n")
             ntcallv_fh = open(samp+'_nt_calls_varonly.tsv', "w")
@@ -828,7 +835,7 @@ def SAMparse(file):
             # END NT CALL OUT
             print(f"End nt call out for {samp}")
 
-        if args.covar ==1:
+        if args.covar ==1: # output covariants
             combinations = {}
             for sequence in seq_species:
                 if args.wgs == 0:
@@ -881,7 +888,7 @@ def SAMparse(file):
                         coveragepercent = combinations[key] / mincov
                     if coveragepercent >= min_abund:
                         covar_fh.write(f"{key}\t{combinations[key]}\t{coveragepercent:.3f}\n")
-                
+
                     # \t{coveragepercent:.3f}
             covar_fh.close()
 
@@ -889,7 +896,7 @@ def SAMparse(file):
             # END COVAR OUT
             print(f"End covar out for {samp}")
 
-def cvdeconv(samp, covardict, seqdict):
+def cvdeconv(samp, covardict, seqdict): # covar deconvolution process
 
     passedseqs = {}
     for seq in seqdict:
@@ -964,7 +971,7 @@ def cvdeconv(samp, covardict, seqdict):
 
     return()
 
-def dechim(seqs):
+def dechim(seqs): # processing sequence dictionary to remove chimeras
     total = seqs['total']
     del seqs['total']
     sorted_seqs = sorted(seqs, key=seqs.__getitem__)
@@ -1059,7 +1066,7 @@ def dechim(seqs):
 
     return(seqs)
 
-def chimrm(samp, seqs):
+def chimrm(samp, seqs): # chimera removed process
 
     pre_len = len(seqs)
     inf_loop_shield = 0
@@ -1095,52 +1102,51 @@ def chimrm(samp, seqs):
 
 if __name__ == '__main__':
 
-    args = arg_parser()
+    args = arg_parser() # getting command line arguments
 
-    if args.sams == 1:
+    #if args.sams == 1: 
 
-        ref = get_ref()
-        if ref[1] == '':
-            print('Reference not recognized as a Fasta format, skipping SAM parsing')
+    ref = get_ref() # get the reference ID and sequence from the FASTA file
+    if ref[1] == '':
+        print('Reference not recognized as a Fasta format, skipping SAM parsing')
+    else:
+        # collect SAM files to process, either from the command line or the working directory
+        SAMs = []
+        try:
+            args.Sam_files[0]
+        except:
+            for file in os.listdir(os.getcwd()):
+                if (file.lower()).endswith('.sam'):
+                    SAMs.append(open(file, "r"))
         else:
-            SAMs = []
-            try:
-                args.Sam_files[0]
-            except:
-                for file in os.listdir(os.getcwd()):
-                    if (file.lower()).endswith('.sam'):
-                        SAMs.append(open(file, "r"))
-            else:
-                for files in args.Sam_files:
-                    for file in files:
-                        SAMs.append(file)
-            refprot = ''
-            if args.AAreport == 1:
+            for files in args.Sam_files:
+                for file in files:
+                    SAMs.append(file)
+        refprot = ''
+        if args.AAreport == 1: # make an Amino Acid sequence based on the reference sequence
+            for x in range(0, (len(ref[1])-1)//3):
+                AA = AAcall(ref[1][x*3]+ref[1][x*3+1]+ref[1][x*3+2])
+                refprot = refprot + AA
+            if (len(ref[1])-1)%3 != 0:
+                refprot = refprot + '?'
 
-                for x in range(0, (len(ref[1])-1)//3):
-                    AA = AAcall(ref[1][x*3]+ref[1][x*3+1]+ref[1][x*3+2])
-                    refprot = refprot + AA
-                if (len(ref[1])-1)%3 != 0:
-                    refprot = refprot + '?'
-
-
-            processes = []
-            for file in SAMs:
-                p = Process(target=SAMparse, args=(file,))
-                p.start()
-                processes.append(p)
-            # # END SAM FILES
-            for p in processes:
-                p.join()
-            print(f"End Sam Parsing Output")
+        processes = []
+        for file in SAMs:
+            p = Process(target=SAMparse, args=(file,)) # parallel processing for each SAM file
+            p.start()
+            processes.append(p)
+        # # END SAM FILES
+        for p in processes:
+            p.join()
+        print(f"End Sam Parsing Output")
 
     in_covars = {}
     in_seqs = {}
-
+    # Begin chimera removal if enabled
     if args.chim_rm == 1 or args.deconv == 1:
         for file in os.listdir(os.getcwd()):
             sampline = []
-            if file.endswith('_covars.tsv'):
+            if file.endswith('_covars.tsv'): # get covars for covar deconvolution
                 if args.deconv == 1:
                     try:
                         open(file, 'r')
@@ -1167,7 +1173,7 @@ if __name__ == '__main__':
                         covar_fh.close
 
 
-            if file.endswith('_seqs.tsv'):
+            if file.endswith('_seqs.tsv'): # get unique sequences for chimera removal
                 try:
                     open(file, 'r')
                 except:
@@ -1187,9 +1193,9 @@ if __name__ == '__main__':
                                     in_seqs[sampline[0]][lineparts[0]] = float(lineparts[1])
                     seq_fh.close
 
-    if args.deconv == 1:
+    if args.deconv == 1:  
         deconv_procs = []
-        for samp in in_covars:
+        for samp in in_covars: # parallel processes for covar deconvolution of each sample
             # cvdeconv(samp, in_covars[samp], in_seqs[samp])
             deconv_p = Process(target=cvdeconv, args=(samp, in_covars[samp], in_seqs[samp],))
             deconv_p.start()
@@ -1203,7 +1209,7 @@ if __name__ == '__main__':
 
     if args.chim_rm == 1:
         cr_procs = []
-        for samp in in_seqs:
+        for samp in in_seqs: # parallel processes for chim removed of each sample, must be done second, as it modifies the sequence dictionary
             # chimrm(samp, in_seqs[samp])
             chimrm_p = Process(target=chimrm, args=(samp, in_seqs[samp],))
             chimrm_p.start()
@@ -1212,7 +1218,7 @@ if __name__ == '__main__':
         for chimrm_p in cr_procs:
             chimrm_p.join()
 
-
+# begin collection of sample outputs
     if args.collect == 1:
         covar_dict_dict = {}
         seq_dict_dict = {}
