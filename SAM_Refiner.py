@@ -155,6 +155,13 @@ def arg_parser():
         help='Enable/Disable (1/0) nt_call output, default enabled (--nt_call 1)'
     )
     parser.add_argument(
+        '--ntvar',
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help='Enable/Disable (1/0) nt_call output, default enabled (--nt_call 1)'
+    )
+    parser.add_argument(
         '--indel',
         type=int,
         default=1,
@@ -463,7 +470,7 @@ def SAMparse(file): # process SAM files
 
                             if C == 'I':
                                 if query_pos > 0:
-                                    # add insertion to array
+                                    # add insertion to dict
                                     iPOS = q_pars_pos+POS
 
                                     iSeq = query_seq[query_pos: query_pos+run_length]
@@ -639,7 +646,7 @@ def SAMparse(file): # process SAM files
                             coverage[i] = abund_count
 
     # END SAM LINES
-    print(f"End sam parse for {samp}")
+    print(f"End SAM parse for {samp}")
     # print(coverage)
 
     if sam_read_count == 0:
@@ -707,12 +714,14 @@ def SAMparse(file): # process SAM files
         if args.nt_call == 1: # out put nt calls
             ntcall_fh = open(samp+'_nt_calls.tsv', "w")
             ntcall_fh.write(samp+"("+str(sam_read_count)+")\n")
-            ntcallv_fh = open(samp+'_nt_calls_varonly.tsv', "w")
-            ntcallv_fh.write(samp+"("+str(sam_read_count)+")\n")
+            if args.ntvar == 1:
+                ntcallv_fh = open(samp+'_nt_calls_varonly.tsv', "w")
+                ntcallv_fh.write(samp+"("+str(sam_read_count)+")\n")
             sorted_POS = sorted(nt_call_dict_dict)
             if args.AAreport == 1:
                 ntcall_fh.write("Position\tref NT\tAA POS\tref AA\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
-                ntcallv_fh.write("Position\tref NT\tAA POS\tref AA\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
+                if args.ntvar == 1:
+                    ntcallv_fh.write("Position\tref NT\tAA POS\tref AA\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
                 for POS in sorted_POS:
                     try:
                         total = coverage[POS]
@@ -730,10 +739,11 @@ def SAMparse(file): # process SAM files
                         ntcall_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[0]]))
                         ntcall_fh.write(f"\t{(nt_call_dict_dict[POS][sorted_calls[0]]/total):.3f}")
                         if sorted_calls[0] != ref[1][POS-1]:
-                            ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1]+"\t"+str(AAinfo[0])+"\t"+AAinfo[1])
-                            ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
-                            ntcallv_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[0]]))
-                            ntcallv_fh.write(f"\t{(nt_call_dict_dict[POS][sorted_calls[0]]/total):.3f}")
+                            if args.ntvar == 1:
+                                ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1]+"\t"+str(AAinfo[0])+"\t"+AAinfo[1])
+                                ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
+                                ntcallv_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[0]]))
+                                ntcallv_fh.write(f"\t{(nt_call_dict_dict[POS][sorted_calls[0]]/total):.3f}")
 
                             mod = (POS)%3
 
@@ -753,36 +763,42 @@ def SAMparse(file): # process SAM files
                                 except:
                                     codon = 'NNN'
                             ntcall_fh.write("\t"+AAcall(codon)+"\t"+singletCodon(POS, sorted_calls[0])[1])
-                            ntcallv_fh.write("\t"+AAcall(codon)+"\t"+singletCodon(POS, sorted_calls[0])[1])
+                            if args.ntvar == 1:
+                                ntcallv_fh.write("\t"+AAcall(codon)+"\t"+singletCodon(POS, sorted_calls[0])[1])
                             if nt_call_dict_dict[POS][sorted_calls[1]] /total > min_abund:
-                                if sorted_calls[1] != ref[1][POS-1]:
+                                if sorted_calls[1] != ref[1][POS-1] and args.ntvar == 1:
                                     ntcallv_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1])[1])
                                 ntcall_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1])[1])
                                 if nt_call_dict_dict[POS][sorted_calls[2]] /total  > min_abund:
-                                    if sorted_calls[2] != ref[1][POS-1]:
+                                    if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
                                         ntcallv_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2])[1]}")
                                     ntcall_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2])[1]}")
 
-                            ntcallv_fh.write("\n")
+                            if args.ntvar == 1:
+                                ntcallv_fh.write("\n")
                         elif nt_call_dict_dict[POS][sorted_calls[1]]  /total > min_abund:
-                            ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1]+"\t"+str(AAinfo[0])+"\t"+AAinfo[1])
-                            ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
-                            ntcallv_fh.write("\t"+str(total)+"\t\t")
-                            ntcallv_fh.write(f"\t")
+                            if args.ntvar == 1:
+                                ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1]+"\t"+str(AAinfo[0])+"\t"+AAinfo[1])
+                                ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
+                                ntcallv_fh.write("\t"+str(total)+"\t\t")
+                                ntcallv_fh.write(f"\t")
+                                ntcallv_fh.write("\t\t")
+                                ntcallv_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1])[1])
                             ntcall_fh.write("\t\t")
-                            ntcallv_fh.write("\t\t")
                             ntcall_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1])[1])
-                            ntcallv_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1])[1])
+                            
                             if nt_call_dict_dict[POS][sorted_calls[2]] /total  > min_abund:
                                 ntcall_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2])[1]}")
-                                if sorted_calls[2] != ref[1][POS-1]:
+                                if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
                                     ntcallv_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2])[1]}")
-                            ntcallv_fh.write("\n")
+                            if args.ntvar == 1:
+                                ntcallv_fh.write("\n")
 
                         ntcall_fh.write("\n")
             else:
                 ntcall_fh.write("Position\tref NT\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
-                ntcallv_fh.write("Position\tref NT\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
+                if args.ntvar == 1:
+                    ntcallv_fh.write("Position\tref NT\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
 
                 for POS in sorted_POS:
                     try:
@@ -800,38 +816,43 @@ def SAMparse(file): # process SAM files
                         ntcall_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[0]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[0]]/total):.3f}")
 
                         if sorted_calls[0] != ref[1][POS-1]:
-                            ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1])
-                            ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
-                            ntcallv_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[0]]))
-                            ntcallv_fh.write(f"\t{(nt_call_dict_dict[POS][sorted_calls[0]]/total):.3f}")
+                            if args.ntvar == 1:
+                                ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1])
+                                ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
+                                ntcallv_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[0]]))
+                                ntcallv_fh.write(f"\t{(nt_call_dict_dict[POS][sorted_calls[0]]/total):.3f}")
                             if nt_call_dict_dict[POS][sorted_calls[1]] /total  > min_abund:
                                 ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
-                                if sorted_calls[1] != ref[1][POS-1]:
+                                if sorted_calls[1] != ref[1][POS-1] and args.ntvar == 1:
                                     ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
                                 if nt_call_dict_dict[POS][sorted_calls[2]] /total  > min_abund:
                                     ntcall_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
-                                    if sorted_calls[2] != ref[1][POS-1]:
+                                    if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
                                         ntcallv_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
-                            ntcallv_fh.write("\n")
+                            if args.ntvar == 1:
+                                ntcallv_fh.write("\n")
 
                         elif nt_call_dict_dict[POS][sorted_calls[1]] /total  > min_abund:
-                            ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1])
-                            ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
-                            ntcallv_fh.write("\t"+str(total)+"\t\t")
-                            ntcallv_fh.write(f"\t")
+                            if args.ntvar == 1:
+                                ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1])
+                                ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
+                                ntcallv_fh.write("\t"+str(total)+"\t\t")
+                                ntcallv_fh.write(f"\t")
                             ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
                             if sorted_calls[1] != ref[1][POS-1]:
                                 ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
                             if nt_call_dict_dict[POS][sorted_calls[2]] /total  > min_abund:
                                 ntcall_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
-                                if sorted_calls[2] != ref[1][POS-1]:
+                                if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
                                     ntcallv_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
-                            ntcallv_fh.write("\n")
+                            if args.ntvar == 1:
+                                ntcallv_fh.write("\n")
 
                         ntcall_fh.write("\n")
 
             ntcall_fh.close()
-            ntcallv_fh.close()
+            if args.ntvar == 1:
+                ntcallv_fh.close()
             # END NT CALL OUT
             print(f"End nt call out for {samp}")
 
