@@ -61,8 +61,8 @@ def arg_parser():
     parser.add_argument(
         '--max_dist',
         type=int,
-        default=50,
-        help='Maximum number of variances from the reference a sequence can have to be consider in covars processing (default: 50)'
+        default=40,
+        help='Maximum number of variances from the reference a sequence can have to be consider in covars processing (default: 40)'
     )
     parser.add_argument(
         '--max_covar',
@@ -292,6 +292,7 @@ def get_ref(): # get the reference ID and sequence from the FASTA file.  Will on
             refID = line[1:].strip("\n\r")
         elif n == 1:
             refseq = refseq + line.strip("\n\r")
+    refseq = refseq.upper()
 
 
     return(refID, refseq)
@@ -411,7 +412,7 @@ def SAMparse(file): # process SAM files
     for line in file:
         if not line.startswith('@'): # ignore header lines
             splitline = line.split("\t")
-            if ref[0].startswith(splitline[2]): # check map ID matches referecne ID
+            if ref[0].upper().startswith(splitline[2].upper()): # check map ID matches referecne ID
                 if int(splitline[4]) > 0:  # Check mapping score is positive
 
                     abund_count=1
@@ -453,7 +454,7 @@ def SAMparse(file): # process SAM files
                     elif POS < firstPOS:
                         firstPOS = POS
 
-                    query_seq = splitline[9]
+                    query_seq = splitline[9].upper()
                     run_length = 0
                     query_seq_parsed = ''
                     query_pos = 0
@@ -464,9 +465,9 @@ def SAMparse(file): # process SAM files
                         if C == 'M' or C == 'I' or C == 'D' or C == 'S' or C == 'H':
                             if C == 'S':
                                 query_pos = query_pos + run_length
-                            if C == 'H':
-                                query_pos = query_pos + run_length
-                                q_pars_pos = q_pars_pos + run_length
+                            # if C == 'H':
+                                # query_pos = query_pos + run_length
+                                # q_pars_pos = q_pars_pos + run_length
 
                             if C == 'I':
                                 if query_pos > 0:
@@ -518,25 +519,27 @@ def SAMparse(file): # process SAM files
                             elif C == 'M':
                                 offset = q_pars_pos-query_pos
                                 refPOS = POS+offset
+
                                 for ntPOS in range(query_pos, query_pos+run_length):
-                                    if query_seq[ntPOS] != ref[1][refPOS+ntPOS-1]:
-                                        if args.AAreport == 1 and args.AAcodonasMNP == 0:
-                                            AAinfo = singletCodon(refPOS+ntPOS, query_seq[ntPOS])
-                                            mutations.append(str(refPOS+ntPOS)+query_seq[ntPOS]+'('+refprot[AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')')
-                                        else:
-                                            mutations.append(str(refPOS+ntPOS)+query_seq[ntPOS])
-                                    if args.nt_call == 1:
-                                        try:
-                                            nt_call_dict_dict[refPOS+ntPOS]
-                                        except:
-                                            nt_call_dict_dict[refPOS+ntPOS] = {'A' : 0,
-                                                                               'T' : 0,
-                                                                               'C' : 0,
-                                                                               'G' : 0,
-                                                                               '-' : 0}
-                                            nt_call_dict_dict[refPOS+ntPOS][query_seq[ntPOS]] = abund_count
-                                        else:
-                                            nt_call_dict_dict[refPOS+ntPOS][query_seq[ntPOS]] += abund_count
+                                    if query_seq[ntPOS] == 'A' or query_seq[ntPOS] == 'T' or query_seq[ntPOS] == 'C' or query_seq[ntPOS] == 'G':
+                                        if query_seq[ntPOS] != ref[1][refPOS+ntPOS-1]:
+                                            if args.AAreport == 1 and args.AAcodonasMNP == 0:
+                                                AAinfo = singletCodon(refPOS+ntPOS, query_seq[ntPOS])
+                                                mutations.append(str(refPOS+ntPOS)+query_seq[ntPOS]+'('+refprot[AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')')
+                                            else:
+                                                mutations.append(str(refPOS+ntPOS)+query_seq[ntPOS])
+                                        if args.nt_call == 1:
+                                            try:
+                                                nt_call_dict_dict[refPOS+ntPOS]
+                                            except:
+                                                nt_call_dict_dict[refPOS+ntPOS] = {'A' : 0,
+                                                                                   'T' : 0,
+                                                                                   'C' : 0,
+                                                                                   'G' : 0,
+                                                                                   '-' : 0}
+                                                nt_call_dict_dict[refPOS+ntPOS][query_seq[ntPOS]] = abund_count
+                                            else:
+                                                nt_call_dict_dict[refPOS+ntPOS][query_seq[ntPOS]] += abund_count
 
 
                                 q_pars_pos = q_pars_pos + run_length
@@ -786,7 +789,7 @@ def SAMparse(file): # process SAM files
                                 ntcallv_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1])[1])
                             ntcall_fh.write("\t\t")
                             ntcall_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1])[1])
-                            
+
                             if nt_call_dict_dict[POS][sorted_calls[2]] /total  > min_abund:
                                 ntcall_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2])[1]}")
                                 if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
@@ -855,8 +858,8 @@ def SAMparse(file): # process SAM files
                 ntcallv_fh.close()
             # END NT CALL OUT
             print(f"End nt call out for {samp}")
-
-        if args.covar ==1: # output covariants
+        if args.covar == 1: # output covariants
+            testtrack = 0
             combinations = {}
             for sequence in seq_species:
                 if args.wgs == 0:
@@ -1119,7 +1122,7 @@ if __name__ == '__main__':
 
     args = arg_parser() # getting command line arguments
 
-    #if args.sams == 1: 
+    #if args.sams == 1:
 
     ref = get_ref() # get the reference ID and sequence from the FASTA file
     if ref[1] == '':
@@ -1208,7 +1211,7 @@ if __name__ == '__main__':
                                     in_seqs[sampline[0]][lineparts[0]] = float(lineparts[1])
                     seq_fh.close
 
-    if args.deconv == 1:  
+    if args.deconv == 1:
         deconv_procs = []
         for samp in in_covars: # parallel processes for covar deconvolution of each sample
             # cvdeconv(samp, in_covars[samp], in_seqs[samp])
