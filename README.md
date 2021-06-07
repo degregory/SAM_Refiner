@@ -10,8 +10,10 @@ SAM Refiner processes SAM formated files generated from sequencing mapping progr
 
 ## Updates
 2021-06-06 
-Added handling of non canonical NT calls.  Anything other than ATCG will be treated as a called position, but with no recored called nt or del.  
-Changed default --max_dist to 40.
+Added handling of non canonical NT calls.  Anything other than ATCG will not be recorded.
+Changed default --max_dist to 40
+2021-06-06
+Added AA reporting to indel in seq and covar outputs.  Reports AA for inframe indels based on the read for seq and covar outputs.  May be inconsistent w/ mismatch reporting if mismatches flank the indel.  
 
 
 
@@ -20,6 +22,8 @@ Changed default --max_dist to 40.
 Currently working to have a mode for whole genome sequencing.  Enabled with --wgs 1, but not yet fully implimented and tested.
 
 Currently working on a nt call output for only variant calls.  Enabled with --ntvar 1, but not yet fully implimented and tested.
+
+
 
 
 
