@@ -475,23 +475,56 @@ def SAMparse(file): # process SAM files
                                     iPOS = q_pars_pos+POS
 
                                     iSeq = query_seq[query_pos: query_pos+run_length]
+                                    istring = str(iPOS)+'-insert'+iSeq
 
                                     try:
-                                        indel_dict[str(iPOS)+'-insert'+iSeq]
+                                        indel_dict[istring]
                                     except:
-                                        indel_dict[str(iPOS)+'-insert'+iSeq] = abund_count
+                                        indel_dict[istring] = abund_count
                                     else:
-                                        indel_dict[str(iPOS)+'-insert'+iSeq] += abund_count
+                                        indel_dict[istring] += abund_count
 
-                                    mutations.append(str(iPOS)+'-insert'+iSeq)
+                                    if args.AAreport == 1 and (run_length % 3 == 0):
+                                        iProt = ''
+                                        if iPOS % 3 == 1:
+                                            for x in range(0, (run_length//3)):
+                                                AA = AAcall(iSeq[x*3]+iSeq[x*3+1]+iSeq[x*3+2])
+                                                iProt = iProt + AA
+                                            mutations.append(istring + '(' + str((iPOS//3)+1) + iProt + ')')
+                                        elif iPOS % 3 == 2:
+                                            ipSeq = query_seq[query_pos-1:query_pos+run_length+2]
+                                            for x in range(0, (run_length//3)+1):
+                                                AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
+                                                iProt = iProt + AA
+                                            mutations.append(istring + '(' + str((iPOS//3)+1) + iProt + ')')
+                                        else:
+                                            ipSeq = query_seq[query_pos-2:query_pos+run_length+1]
+                                            for x in range(0, (run_length//3)+1):
+                                                AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
+                                                iProt = iProt + AA
+                                            mutations.append(istring + '(nn' + ipSeq + str((iPOS//3)+1) + iProt + ')')
+                                    else:
+                                        mutations.append(istring)
 
                                     query_pos = query_pos + run_length
 
                             elif C == 'D':
                                 for X in range(0, run_length):
                                     query_seq_parsed += '-'
+                                
+                                delstring = str(q_pars_pos+POS)+'-'+str(q_pars_pos+POS+run_length-1)+'Del'
 
-                                mutations.append(str((q_pars_pos+POS))+'-'+str((q_pars_pos+POS+int(run_length)-1))+'Del')
+                                if args.AAreport == 1 and (run_length % 3 == 0) and not ((q_pars_pos+POS) % 3 == 1 ):
+                                    if (q_pars_pos+POS) % 3 == 2:
+                                        newcodon = query_seq[query_pos-1:query_pos+2]
+                                        newAArefpos = (q_pars_pos+POS) // 3
+                                        mutations.append(delstring + '(' + refprot[newAArefpos] + str(newAArefpos+1) + AAcall(newcodon) + ')')
+                                    else:
+                                        newcodon = query_seq[query_pos-2:query_pos+1]
+                                        newAArefpos = (q_pars_pos+POS) // 3
+                                        mutations.append(delstring + '(' + refprot[newAArefpos] + str(newAArefpos+1) + AAcall(newcodon) + ')')
+                                else:
+                                    mutations.append(delstring)
 
                                 if args.nt_call == 1:
                                     for N in range(q_pars_pos+POS, q_pars_pos+POS+int(run_length)):
@@ -499,10 +532,10 @@ def SAMparse(file): # process SAM files
                                             nt_call_dict_dict[N]
                                         except:
                                             nt_call_dict_dict[N] = {'A' : 0,
-                                                                               'T' : 0,
-                                                                               'C' : 0,
-                                                                               'G' : 0,
-                                                                               '-' : 0}
+                                                                    'T' : 0,
+                                                                    'C' : 0,
+                                                                    'G' : 0,
+                                                                    '-' : 0}
                                             nt_call_dict_dict[N]['-'] = abund_count
                                         else:
                                             nt_call_dict_dict[N]['-'] += abund_count
