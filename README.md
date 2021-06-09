@@ -12,6 +12,7 @@ SAM Refiner processes SAM formated files generated from sequencing mapping progr
 2021-06-06 
 Added handling of non canonical NT calls.  Anything other than ATCG will not be recorded.
 Changed default --max_dist to 40
+
 2021-06-06
 Added AA reporting to indel in seq and covar outputs.  Reports AA for inframe indels based on the read for seq and covar outputs.  May be inconsistent w/ mismatch reporting if mismatches flank the indel.  
 
