@@ -284,15 +284,16 @@ def get_ref(ref): # get the reference ID and sequence from the FASTA file.  Will
     n=0
     refID = ''
     refseq = ''
-    for line in ref:
-        if line.startswith('>'):
-            n+=1
-            if n > 1:
-                break
-            refID = line[1:].strip("\n\r")
-        elif n == 1:
-            refseq = refseq + line.strip("\n\r")
-    refseq = refseq.upper()
+    if ref:
+        for line in ref:
+            if line.startswith('>'):
+                n+=1
+                if n > 1:
+                    break
+                refID = line[1:].strip("\n\r")
+            elif n == 1:
+                refseq = refseq + line.strip("\n\r")
+        refseq = refseq.upper()
 
 
     return(refID, refseq)
@@ -964,7 +965,10 @@ def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
                 splitseq = seq.split(' ')
                 abund = 1
                 for sing in splitseq:
-                    abund = abund * (covardict[sing] / covardict['total'])
+                    try:
+                        abund = abund * (covardict[sing] / covardict['total'])
+                    except:
+                        abund = abund * (seqdict[seq] / seqdict['total'])
 
                 try:
                     covarabund = covardict[seq]/covardict['total']
@@ -972,10 +976,10 @@ def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
                     covarabund = seqdict[seq]/seqdict['total']
                     covardict[seq] = seqdict[seq]
 
-                if covarabund >= abund * args.beta:
-                    passedseqs[seq] = covarabund / abund
                 if covarabund >= args.autopass:
                     passedseqs[seq] = max(1, args.beta, (covarabund / abund))
+                elif covarabund >= abund * args.beta:
+                    passedseqs[seq] = covarabund / abund
 
     if args.min_abundance1 < 1:
         min_abund = args.min_abundance1 * covardict['total']
@@ -1159,7 +1163,7 @@ def main():
 
     ref = get_ref(args.ref) # get the reference ID and sequence from the FASTA file
     if ref[1] == '':
-        print('Reference not recognized as a Fasta format, skipping SAM parsing')
+        print('Reference not provided or not recognized as a Fasta format, skipping SAM parsing')
     else:
         # collect SAM files to process, either from the command line or the working directory
         SAMs = []
