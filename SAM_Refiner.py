@@ -279,12 +279,12 @@ def arg_parser():
 
     return(args)
 
-def get_ref(): # get the reference ID and sequence from the FASTA file.  Will only get the first.
+def get_ref(ref): # get the reference ID and sequence from the FASTA file.  Will only get the first.
 
     n=0
     refID = ''
     refseq = ''
-    for line in args.ref:
+    for line in ref:
         if line.startswith('>'):
             n+=1
             if n > 1:
@@ -373,7 +373,7 @@ def AAcall(codon): # amino acid / codon dictionary to return encoded AAs
 
     return(AA)
 
-def singletCodon(ntPOS, nt): # process to return the AA and protein seq. position based on the reference and provided nt seq position and nt
+def singletCodon(ntPOS, nt, ref): # process to return the AA and protein seq. position based on the reference and provided nt seq position and nt
     AAPOS = (ntPOS-1)//3
     AAmod = (ntPOS-1)%3
     codon = ""
@@ -396,7 +396,7 @@ def getCombos(qlist, clen): # returns combinations of single polymorphisms in a 
             combos.append(' '.join(comb))
     return(combos)
 
-def SAMparse(file): # process SAM files
+def SAMparse(args, ref, refprot, file): # process SAM files
     samp=file.name[0: -4]
     print(f"Starting {samp} processing")
     nt_call_dict_dict = {}
@@ -511,7 +511,7 @@ def SAMparse(file): # process SAM files
                             elif C == 'D':
                                 for X in range(0, run_length):
                                     query_seq_parsed += '-'
-                                
+
                                 delstring = str(q_pars_pos+POS)+'-'+str(q_pars_pos+POS+run_length-1)+'Del'
 
                                 if args.AAreport == 1 and (run_length % 3 == 0) and not ((q_pars_pos+POS) % 3 == 1 ):
@@ -557,7 +557,7 @@ def SAMparse(file): # process SAM files
                                     if query_seq[ntPOS] == 'A' or query_seq[ntPOS] == 'T' or query_seq[ntPOS] == 'C' or query_seq[ntPOS] == 'G':
                                         if query_seq[ntPOS] != ref[1][refPOS+ntPOS-1]:
                                             if args.AAreport == 1 and args.AAcodonasMNP == 0:
-                                                AAinfo = singletCodon(refPOS+ntPOS, query_seq[ntPOS])
+                                                AAinfo = singletCodon(refPOS+ntPOS, query_seq[ntPOS], ref)
                                                 mutations.append(str(refPOS+ntPOS)+query_seq[ntPOS]+'('+refprot[AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')')
                                             else:
                                                 mutations.append(str(refPOS+ntPOS)+query_seq[ntPOS])
@@ -613,12 +613,12 @@ def SAMparse(file): # process SAM files
                                     try:
                                         mutations[i+1]
                                     except:
-                                        AAinfo = singletCodon(mut1POS, mutations[i][-1])
+                                        AAinfo = singletCodon(mut1POS, mutations[i][-1], ref)
                                         codonchecked.append(mutations[i]+'('+refprot[AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')')
                                     else:
 
                                         if mut1POS % 3 == 0:
-                                            AAinfo = singletCodon(mut1POS, mutations[i][-1])
+                                            AAinfo = singletCodon(mut1POS, mutations[i][-1], ref)
                                             codonchecked.append(mutations[i]+'('+refprot[AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')')
                                         else:
                                             mut2POS = int(''.join([c for c in mutations[i+1] if c.isdigit()]))
@@ -653,12 +653,12 @@ def SAMparse(file): # process SAM files
                                                     skip = 1
                                                     codonchecked.append(str(mut1POS)+MNP+'('+refprot[AAPOS]+str(AAPOS+1)+AAcall(codon)+')')
                                                 else:
-                                                    AAinfo = singletCodon(mut1POS, mutations[i][-1])
+                                                    AAinfo = singletCodon(mut1POS, mutations[i][-1], ref)
                                                     codonchecked.append(mutations[i]+'('+refprot[AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')')
 
 
                                             else:
-                                                AAinfo = singletCodon(mut1POS, mutations[i][-1])
+                                                AAinfo = singletCodon(mut1POS, mutations[i][-1], ref)
                                                 codonchecked.append(mutations[i]+'('+refprot[AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')')
                             mutations = codonchecked
 
@@ -764,7 +764,7 @@ def SAMparse(file): # process SAM files
                     except:
                         total = 0
                     if total >= (sam_read_count * args.ntabund):
-                        AAinfo = singletCodon(POS, ref[1][POS-1])
+                        AAinfo = singletCodon(POS, ref[1][POS-1], ref)
                         POS_calls = {}
                         for key in nt_call_dict_dict[POS]:
                             POS_calls[key] = nt_call_dict_dict[POS][key]
@@ -798,17 +798,17 @@ def SAMparse(file): # process SAM files
                                     codon = sorted_calls[0]+ref[1][POS]+ref[1][POS+1]
                                 except:
                                     codon = 'NNN'
-                            ntcall_fh.write("\t"+AAcall(codon)+"\t"+singletCodon(POS, sorted_calls[0])[1])
+                            ntcall_fh.write("\t"+AAcall(codon)+"\t"+singletCodon(POS, sorted_calls[0], ref)[1])
                             if args.ntvar == 1:
-                                ntcallv_fh.write("\t"+AAcall(codon)+"\t"+singletCodon(POS, sorted_calls[0])[1])
+                                ntcallv_fh.write("\t"+AAcall(codon)+"\t"+singletCodon(POS, sorted_calls[0], ref)[1])
                             if nt_call_dict_dict[POS][sorted_calls[1]] /total > min_abund:
                                 if sorted_calls[1] != ref[1][POS-1] and args.ntvar == 1:
-                                    ntcallv_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1])[1])
-                                ntcall_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1])[1])
+                                    ntcallv_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1], ref)[1])
+                                ntcall_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1], ref)[1])
                                 if nt_call_dict_dict[POS][sorted_calls[2]] /total  > min_abund:
                                     if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
-                                        ntcallv_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2])[1]}")
-                                    ntcall_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2])[1]}")
+                                        ntcallv_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2], ref)[1]}")
+                                    ntcall_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2], ref)[1]}")
 
                             if args.ntvar == 1:
                                 ntcallv_fh.write("\n")
@@ -819,14 +819,14 @@ def SAMparse(file): # process SAM files
                                 ntcallv_fh.write("\t"+str(total)+"\t\t")
                                 ntcallv_fh.write(f"\t")
                                 ntcallv_fh.write("\t\t")
-                                ntcallv_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1])[1])
+                                ntcallv_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1], ref)[1])
                             ntcall_fh.write("\t\t")
-                            ntcall_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1])[1])
+                            ntcall_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1], ref)[1])
 
                             if nt_call_dict_dict[POS][sorted_calls[2]] /total  > min_abund:
-                                ntcall_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2])[1]}")
+                                ntcall_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2], ref)[1]}")
                                 if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
-                                    ntcallv_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2])[1]}")
+                                    ntcallv_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2], ref)[1]}")
                             if args.ntvar == 1:
                                 ntcallv_fh.write("\n")
 
@@ -953,7 +953,7 @@ def SAMparse(file): # process SAM files
             # END COVAR OUT
             print(f"End covar out for {samp}")
 
-def cvdeconv(samp, covardict, seqdict): # covar deconvolution process
+def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
 
     passedseqs = {}
     for seq in seqdict: # pass check for actual : expected abundance
@@ -1029,7 +1029,7 @@ def cvdeconv(samp, covardict, seqdict): # covar deconvolution process
 
     return()
 
-def dechim(seqs): # processing sequence dictionary to remove chimeras
+def dechim(args, seqs): # processing sequence dictionary to remove chimeras
     total = seqs['total']
     del seqs['total']
     sorted_seqs = sorted(seqs, key=seqs.__getitem__) # sort sequences by abundance, least to greatest
@@ -1117,12 +1117,12 @@ def dechim(seqs): # processing sequence dictionary to remove chimeras
 
     return(seqs)
 
-def chimrm(samp, seqs): # chimera removed process
+def chimrm(args, samp, seqs): # chimera removed process
 
     pre_len = len(seqs)
     inf_loop_shield = 0
     while True: # send sequences for chimera removal while chimeras are still found
-        dechim(seqs)
+        dechim(args, seqs)
         post_len = len(seqs)
         inf_loop_shield += 1
         # print(f"{inf_loop_shield} {pre_len} {post_len}")
@@ -1151,13 +1151,13 @@ def chimrm(samp, seqs): # chimera removed process
     print(f"End chim_rm out for {samp}") # END CHIM RM DECONV OUT
     return()
 
-if __name__ == '__main__':
+def main():
 
     args = arg_parser() # getting command line arguments
 
     #if args.sams == 1:
 
-    ref = get_ref() # get the reference ID and sequence from the FASTA file
+    ref = get_ref(args.ref) # get the reference ID and sequence from the FASTA file
     if ref[1] == '':
         print('Reference not recognized as a Fasta format, skipping SAM parsing')
     else:
@@ -1183,7 +1183,7 @@ if __name__ == '__main__':
 
         processes = []
         for file in SAMs:
-            p = Process(target=SAMparse, args=(file,)) # parallel processing for each SAM file
+            p = Process(target=SAMparse, args=(args, ref, refprot, file,)) # parallel processing for each SAM file
             p.start()
             processes.append(p)
         # # END SAM FILES
@@ -1248,7 +1248,7 @@ if __name__ == '__main__':
         deconv_procs = []
         for samp in in_covars: # parallel processes for covar deconvolution of each sample
             # cvdeconv(samp, in_covars[samp], in_seqs[samp])
-            deconv_p = Process(target=cvdeconv, args=(samp, in_covars[samp], in_seqs[samp],))
+            deconv_p = Process(target=cvdeconv, args=(args, samp, in_covars[samp], in_seqs[samp],))
             deconv_p.start()
             deconv_procs.append(deconv_p)
 
@@ -1262,7 +1262,7 @@ if __name__ == '__main__':
         cr_procs = []
         for samp in in_seqs: # parallel processes for chim removed of each sample, must be done second, as it modifies the sequence dictionary
             # chimrm(samp, in_seqs[samp])
-            chimrm_p = Process(target=chimrm, args=(samp, in_seqs[samp],))
+            chimrm_p = Process(target=chimrm, args=(args, samp, in_seqs[samp],))
             chimrm_p.start()
             cr_procs.append(chimrm_p)
 
@@ -1522,3 +1522,7 @@ if __name__ == '__main__':
             Col_cr_fh.close()
         else:
             print('No chim_rm files found')
+
+
+if __name__ == '__main__':
+    main()
