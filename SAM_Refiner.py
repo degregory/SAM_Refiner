@@ -5,7 +5,6 @@
 import os
 import sys
 import argparse
-import json
 import itertools
 from multiprocessing import Process
 from pathlib import Path
@@ -147,6 +146,13 @@ def arg_parser():
         # choices=[0, 1],
         # help='Enable/Disable (1/0) sam processing, default enabled (--sams 1)'
     # )
+    parser.add_argument(
+        '--read',
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help='Enable/Disable (1/0) reads output, default disabled (--nt_call 0)'
+    )
     parser.add_argument(
         '--nt_call',
         type=int,
@@ -408,6 +414,9 @@ def SAMparse(args, ref, refprot, file): # process SAM files
     firstPOS = 0
     lastPOS = 0
     coverage = {}
+    if args.read == 1:
+        readID = ''
+        reads_fh = open(samp+'_reads.tsv', "w")
 
 
     for line in file:
@@ -455,6 +464,7 @@ def SAMparse(args, ref, refprot, file): # process SAM files
                     elif POS < firstPOS:
                         firstPOS = POS
 
+                    readID = splitline[0]
                     query_seq = splitline[9].upper()
                     run_length = 0
                     query_seq_parsed = ''
@@ -586,6 +596,8 @@ def SAMparse(args, ref, refprot, file): # process SAM files
                             run_length = (10 * run_length) + int(C)
                     # END CIGAR PARSE
 
+
+
                     if len(mutations) == 0: # record reference counts
                         if args.wgs == 0:
                             try:
@@ -597,6 +609,8 @@ def SAMparse(args, ref, refprot, file): # process SAM files
                                 seq_species[str(POS)+' Ref '+str(POS+q_pars_pos)] += abund_count
                             except:
                                 seq_species[str(POS)+' Ref '+str(POS+q_pars_pos)] = abund_count
+                        if args.read == 1:
+                            reads_fh.write(f"{readID}\tReference\n")
 
                     else: # record variants and counts
                         if args.AAreport == 1 and args.AAcodonasMNP == 1:
@@ -661,18 +675,20 @@ def SAMparse(args, ref, refprot, file): # process SAM files
                                             else:
                                                 AAinfo = singletCodon(mut1POS, mutations[i][-1], ref)
                                                 codonchecked.append(mutations[i]+'('+refprot[AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')')
-                            mutations = codonchecked
+                            mutations = " ".join(codonchecked)
 
                         if args.wgs == 0:
                             try:
-                                seq_species[" ".join(mutations)] += abund_count
+                                seq_species[mutations] += abund_count
                             except:
-                                seq_species[" ".join(mutations)] = abund_count
+                                seq_species[mutations] = abund_count
                         else:
                             try:
-                                seq_species[str(POS)+' '+" ".join(mutations)+' '+str(POS+q_pars_pos)] += abund_count
+                                seq_species[str(POS)+' '+mutations+' '+str(POS+q_pars_pos)] += abund_count
                             except:
-                                seq_species[str(POS)+' '+" ".join(mutations)+' '+str(POS+q_pars_pos)] = abund_count
+                                seq_species[str(POS)+' '+mutations+' '+str(POS+q_pars_pos)] = abund_count
+                        if args.read == 1:
+                            reads_fh.write(f"{readID}\t{mutations}\n")
 
                     if lastPOS < POS+q_pars_pos:
                         lastPOS = POS+q_pars_pos
@@ -681,6 +697,8 @@ def SAMparse(args, ref, refprot, file): # process SAM files
                             coverage[i] += abund_count
                         except:
                             coverage[i] = abund_count
+    if args.read == 1:
+        reads_fh.close()
 
     # END SAM LINES
     print(f"End SAM parse for {samp}")
