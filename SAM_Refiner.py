@@ -9,7 +9,6 @@ import itertools
 from multiprocessing import Process
 from pathlib import Path
 
-DEBUG = False
 
 # process for collecing command line arguments
 def arg_parser():
@@ -975,29 +974,30 @@ def SAMparse(args, ref, refprot, file): # process SAM files
 def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
 
     passedseqs = {}
+    preservedseqs = {}
     for seq in seqdict: # pass check for actual : expected abundance
         if seq != 'total' and seq != 'singles':
-            if len(seq.split(' ')) == 1:
-                passedseqs[seq] = max(1, args.beta)
-            else:
-                splitseq = seq.split(' ')
-                abund = 1
-                for sing in splitseq:
-                    try:
-                        abund = abund * (covardict[sing] / covardict['total'])
-                    except:
-                        abund = abund * (seqdict[seq] / seqdict['total'])
-
+         
+            splitseq = seq.split(' ')
+            abund = 1
+            for sing in splitseq:
                 try:
-                    covarabund = covardict[seq]/covardict['total']
+                    abund = abund * (covardict[sing] / covardict['total'])
                 except:
-                    covarabund = seqdict[seq]/seqdict['total']
-                    covardict[seq] = seqdict[seq]
+                    abund = abund * (seqdict[seq] / seqdict['total'])
 
-                if covarabund >= args.autopass:
-                    passedseqs[seq] = max(1, args.beta, (covarabund / abund))
-                elif covarabund >= abund * args.beta:
-                    passedseqs[seq] = covarabund / abund
+            try:
+                covarabund = covardict[seq]/covardict['total']
+            except:
+                covarabund = seqdict[seq]/seqdict['total']
+                covardict[seq] = seqdict[seq]
+
+            if covarabund >= args.autopass:
+                preservedseqs[seq] = max(1, args.beta, (covarabund / abund))
+            elif covarabund >= abund * args.beta:
+                passedseqs[seq] = covarabund / abund
+            elif len(seq.split(' ')) == 1:
+                passedseqs[seq] = max(1, args.beta)
 
     if args.min_abundance1 < 1:
         min_abund = args.min_abundance1 * covardict['total']
@@ -1007,16 +1007,20 @@ def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
     if args.pass_out == 1: # write passed covars to file if enabled
         fh_pass = open(samp+"_covar_pass.tsv", "w")
         fh_pass.write(f"{samp}({covardict['total']})\tCount\tAbundance\tPass Ratio\n")
+        for seq in preservedseqs:
+            if covardict[seq] >= min_abund:
+                fh_pass.write(f"{seq}\t{covardict[seq]}\t{(covardict[seq]/covardict['total']):.3f}\t{preservedseqs[seq]}*\n")
         for seq in passedseqs:
             if covardict[seq] >= min_abund:
-                fh_pass.write(f"{seq}\t{covardict[seq]}\t{(covardict[seq]/covardict['total']):.3f}\t{passedseqs[seq]:.3f}\n")
+                fh_pass.write(f"{seq}\t{covardict[seq]}\t{(covardict[seq]/covardict['total']):.3f}\t{passedseqs[seq]}\n")
         fh_pass.close
 
     # sort passed covars
     lensortedpassed = sorted(passedseqs, key = lambda key : len(key.split(' ')), reverse=True)
     ratiolensortedpassed = sorted(lensortedpassed, key = lambda key : passedseqs[key], reverse = True)
     sortedsingles = sorted(covardict['singles'], key = covardict['singles'].__getitem__)
-
+    # print(lensortedpassed)
+    # print(ratiolensortedpassed)
     deconved = {}
     for seq in ratiolensortedpassed: # reassign counts
         # print(seq)
@@ -1037,6 +1041,29 @@ def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
                 else:
                     break
         sortedsingles = sorted(covardict['singles'], key = covardict['singles'].__getitem__)
+
+    sortedpreserved = sorted(preservedseqs, key = lambda key : covardict[key])
+ 
+    for seq in sortedpreserved:
+        # print(seq)
+        singles = seq.split(' ')
+        first = 0
+        rem_count = 0
+        for sing in sortedsingles:
+            # print(sing+' '+str(covardict['singles'][sing]))
+            if sing in singles:
+                if covardict['singles'][sing] > 0:
+                    if first == 0:
+                        first = 1
+                        rem_count = covardict['singles'][sing]
+                        covardict['singles'][sing] = 0
+                        deconved[seq] = rem_count
+                    else:
+                        covardict['singles'][sing] = covardict['singles'][sing] - rem_count
+                else:
+                    break
+        sortedsingles = sorted(covardict['singles'], key = covardict['singles'].__getitem__)
+            
 
     newtotal = sum(deconved.values())
     fh_deconv = open(samp+"_covar_deconv.tsv", "w")
@@ -1179,39 +1206,42 @@ def main():
 
     #if args.sams == 1:
 
-    ref = get_ref(args.ref) # get the reference ID and sequence from the FASTA file
-    if ref[1] == '':
-        print('Reference not provided or not recognized as a Fasta format, skipping SAM parsing')
-    else:
-        # collect SAM files to process, either from the command line or the working directory
-        SAMs = []
-        try:
-            args.Sam_files[0]
-        except:
-            for file in os.listdir(os.getcwd()):
-                if (file.lower()).endswith('.sam'):
-                    SAMs.append(open(file, "r"))
+    if args.ref:
+        ref = get_ref(args.ref) # get the reference ID and sequence from the FASTA file
+        if ref[1] == '':
+            print('Reference not recognized as a Fasta format, skipping SAM parsing')
         else:
-            for files in args.Sam_files:
-                for file in files:
-                    SAMs.append(file)
-        refprot = ''
-        if args.AAreport == 1: # make an Amino Acid sequence based on the reference sequence
-            for x in range(0, (len(ref[1])-1)//3):
-                AA = AAcall(ref[1][x*3]+ref[1][x*3+1]+ref[1][x*3+2])
-                refprot = refprot + AA
-            if (len(ref[1])-1)%3 != 0:
-                refprot = refprot + '?'
+            # collect SAM files to process, either from the command line or the working directory
+            SAMs = []
+            try:
+                args.Sam_files[0]
+            except:
+                for file in os.listdir(os.getcwd()):
+                    if (file.lower()).endswith('.sam'):
+                        SAMs.append(open(file, "r"))
+            else:
+                for files in args.Sam_files:
+                    for file in files:
+                        SAMs.append(file)
+            refprot = ''
+            if args.AAreport == 1: # make an Amino Acid sequence based on the reference sequence
+                for x in range(0, (len(ref[1])-1)//3):
+                    AA = AAcall(ref[1][x*3]+ref[1][x*3+1]+ref[1][x*3+2])
+                    refprot = refprot + AA
+                if (len(ref[1])-1)%3 != 0:
+                    refprot = refprot + '?'
 
-        processes = []
-        for file in SAMs:
-            p = Process(target=SAMparse, args=(args, ref, refprot, file,)) # parallel processing for each SAM file
-            p.start()
-            processes.append(p)
-        # # END SAM FILES
-        for p in processes:
-            p.join()
-        print(f"End Sam Parsing Output")
+            processes = []
+            for file in SAMs:
+                p = Process(target=SAMparse, args=(args, ref, refprot, file,)) # parallel processing for each SAM file
+                p.start()
+                processes.append(p)
+            # # END SAM FILES
+            for p in processes:
+                p.join()
+            print(f"End Sam Parsing Output")
+    else:
+        print('No reference provided, skipping SAM parsing')
 
     in_covars = {}
     in_seqs = {}
