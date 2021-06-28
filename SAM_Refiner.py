@@ -38,13 +38,19 @@ def arg_parser():
         help='Enable/Disable (1/0) use of counts in sequence IDs, default enabled (--use_count 1)'
     )
     parser.add_argument(
-        '--min_abundance1',
-        type=float,
-        default=0.001,
+        '--min_count',
+        type=int,
+        default=10,
         help='Minimum observations required to be included in sample reports; >= 1 occurance count; < 1 %% observed (.1 = 10%%), (default: .001)'
     )
     parser.add_argument(
-        '--min_abundance2',
+        '--min_samp_abund',
+        type=float,
+        default=0.001,
+        help='Minimum abundance required for inclusion in sample reports; %% observed (.1 = 10%%), (default: .001)'
+    )
+    parser.add_argument(
+        '--min_col_abund',
         type=float,
         default=.01,
         help='Minimum abundance required for variants to be included in collection reports; must be non-negative and  < 1, %% observed (.1 = 10%%), (default: .01)'
@@ -235,16 +241,23 @@ def arg_parser():
             # print('Must have a reference(-r, --referecne) to parse sams, skipping sam parsing')
             # args.sams = 0
 
-    if args.min_abundance1 < 0:
-        print(f"--min_abundance1 must be non-negative, defaulting to 0.001")
-        args.min_abundance1=0.001
+    if args.min_count < 0:
+        print(f"--min_count must be non-negative, defaulting to 10")
+        args.min_count=10
 
-    if args.min_abundance2 < 0:
-        print(f"--min_abundance2 must be non-negative and < 1, defaulting to 01")
-        args.min_abundance2=0.01
-    elif args.min_abundance2 >= 1:
-        print(f"--min_abundance2 must be non-negative and < 1, defaulting to 01")
-        args.min_abundance2=0.01
+    if args.min_samp_abund < 0:
+        print(f"--min_samp_abund must be non-negative and < 1, defaulting to .001")
+        args.min_samp_abund=0.001
+    elif args.min_samp_abund >= 1:
+        print(f"--min_samp_abund must be non-negative and < 1, defaulting to .001")
+        args.min_samp_abund=0.001
+
+    if args.min_col_abund < 0:
+        print(f"--min_col_abund must be non-negative and < 1, defaulting to .01")
+        args.min_col_abund=0.01
+    elif args.min_col_abund >= 1:
+        print(f"--min_col_abund must be non-negative and < 1, defaulting to .01")
+        args.min_col_abund=0.01
 
     if args.ntabund < 0:
         print(f"--ntabund must be non-negative and < 1, defaulting to .001")
@@ -682,6 +695,8 @@ def SAMparse(args, ref, refprot, file): # process SAM files
                                                 AAinfo = singletCodon(mut1POS, mutations[i][-1], ref)
                                                 codonchecked.append(mutations[i]+'('+refprot[AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')')
                             mutations = " ".join(codonchecked)
+                        else:
+                            mutations = " ".join(mutations)
 
                         if args.wgs == 0:
                             try:
@@ -715,10 +730,12 @@ def SAMparse(args, ref, refprot, file): # process SAM files
 
     else:
 
-        if args.min_abundance1 < 1:
-            min_abund = args.min_abundance1
-        else:
-            min_abund = args.min_abundance1 / sam_read_count
+        # min_count = -1
+        # if args.min_samp_abund < 1 and args.wgs == 0:
+            # min_count = args.min_samp_abund * sam_read_count
+        # else:
+            # min_count = args.min_samp_abund
+            
 
         if args.seq == 1: # output the sequence
             seq_fh = open(samp+'_unique_seqs.tsv', "w")
@@ -727,16 +744,19 @@ def SAMparse(args, ref, refprot, file): # process SAM files
 
             sorted_seq = sorted(seq_species, key=seq_species.__getitem__, reverse=True)
             for key in sorted_seq:
-                if (seq_species[key] / sam_read_count >= min_abund) and args.wgs == 0:
-                    seq_fh.write(f"{key}\t{seq_species[key]}\t{(seq_species[key]/sam_read_count):.3f}\n")
-                elif args.wgs == 1:
-                    splitseqs = key.split()
-                    cov = []
-                    for x in range(int(splitseqs[0]), int(splitseqs[-1])):
-                        cov.append(coverage[x])
-                    min_cov = min(cov)
-                    if seq_species[key]/min_cov >= min_abund:
-                        seq_fh.write(f"{key}\t{seq_species[key]}\t{(seq_species[key]/min_cov):.3f}\n")
+                if seq_species[key] >= args.min_count:
+                    if (seq_species[key] / sam_read_count >= args.min_samp_abund) and args.wgs == 0:
+                        seq_fh.write(f"{key}\t{seq_species[key]}\t{(seq_species[key]/sam_read_count):.3f}\n")
+                    elif args.wgs == 1:
+                        splitseqs = key.split()
+                        cov = []
+                        for x in range(int(splitseqs[0]), int(splitseqs[-1])):
+                            cov.append(coverage[x])
+                        min_cov = min(cov)
+                        if (seq_species[key]/min_cov >= args.min_samp_abund):
+                            seq_fh.write(f"{key}\t{seq_species[key]}\t{(seq_species[key]/min_cov):.3f}\n")
+                else:
+                    break
 
             seq_fh.close()
             # END SEQ OUT
@@ -746,20 +766,19 @@ def SAMparse(args, ref, refprot, file): # process SAM files
             sorted_indels = sorted(indel_dict, key=indel_dict.__getitem__, reverse=True)
             indels_to_write = []
             for key in sorted_indels:
-                if indel_dict[key] / sam_read_count >= min_abund and args.wgs == 0:
-                    indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key]/sam_read_count):.3f}\n")
-                elif args.wgs == 1:
-                    indelPOS = ''
-                    for c in key:
-                        if c.isdigit():
-                            indelPOS += c
-                        else:
-                            break
-                    indelPOS = int(indelPOS)
-                    if indel_dict[key] / coverage[indelPOS] >= min_abund:
-                        indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key] / coverage[indelPOS]):.3f}\n")
-                    else:
-                        break
+                if indel_dict[key] >= args.min_count:
+                    if indel_dict[key] / sam_read_count >= args.min_samp_abund and args.wgs == 0:
+                        indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key]/sam_read_count):.3f}\n")
+                    elif args.wgs == 1:
+                        indelPOS = ''
+                        for c in key:
+                            if c.isdigit():
+                                indelPOS += c
+                            else:
+                                break
+                        indelPOS = int(indelPOS)
+                        if indel_dict[key] / coverage[indelPOS] >= args.min_samp_abund:
+                            indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key] / coverage[indelPOS]):.3f}\n")
                 else:
                     break
             if len(indels_to_write) > 0:
@@ -826,18 +845,19 @@ def SAMparse(args, ref, refprot, file): # process SAM files
                             ntcall_fh.write("\t"+AAcall(codon)+"\t"+singletCodon(POS, sorted_calls[0], ref)[1])
                             if args.ntvar == 1:
                                 ntcallv_fh.write("\t"+AAcall(codon)+"\t"+singletCodon(POS, sorted_calls[0], ref)[1])
-                            if nt_call_dict_dict[POS][sorted_calls[1]] /total > min_abund:
-                                if sorted_calls[1] != ref[1][POS-1] and args.ntvar == 1:
-                                    ntcallv_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1], ref)[1])
-                                ntcall_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1], ref)[1])
-                                if nt_call_dict_dict[POS][sorted_calls[2]] /total  > min_abund:
-                                    if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
-                                        ntcallv_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2], ref)[1]}")
-                                    ntcall_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2], ref)[1]}")
+                            if (nt_call_dict_dict[POS][sorted_calls[1]] > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[1]] /total > args.min_samp_abund):
+                                    if sorted_calls[1] != ref[1][POS-1] and args.ntvar == 1:
+                                        ntcallv_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1], ref)[1])
+                                    ntcall_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1], ref)[1])
+                                    if nt_call_dict_dict[POS][sorted_calls[2]] > args.min_count:
+                                        if nt_call_dict_dict[POS][sorted_calls[2]] /total  > args.min_samp_abund:
+                                            if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
+                                                ntcallv_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2], ref)[1]}")
+                                            ntcall_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2], ref)[1]}")
 
                             if args.ntvar == 1:
                                 ntcallv_fh.write("\n")
-                        elif nt_call_dict_dict[POS][sorted_calls[1]]  /total > min_abund:
+                        elif (nt_call_dict_dict[POS][sorted_calls[1]] /total > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[1]] /total > args.min_samp_abund):
                             if args.ntvar == 1:
                                 ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1]+"\t"+str(AAinfo[0])+"\t"+AAinfo[1])
                                 ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
@@ -848,7 +868,7 @@ def SAMparse(args, ref, refprot, file): # process SAM files
                             ntcall_fh.write("\t\t")
                             ntcall_fh.write(f"\t{sorted_calls[1]}\t{nt_call_dict_dict[POS][sorted_calls[1]]}\t{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}"+"\t"+singletCodon(POS, sorted_calls[1], ref)[1])
 
-                            if nt_call_dict_dict[POS][sorted_calls[2]] /total  > min_abund:
+                            if (nt_call_dict_dict[POS][sorted_calls[2]] > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[2]] /total > args.min_samp_abund):
                                 ntcall_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2], ref)[1]}")
                                 if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
                                     ntcallv_fh.write(f"\t{sorted_calls[2]}\t{nt_call_dict_dict[POS][sorted_calls[2]]}\t{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}\t{singletCodon(POS, sorted_calls[2], ref)[1]}")
@@ -882,27 +902,26 @@ def SAMparse(args, ref, refprot, file): # process SAM files
                                 ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
                                 ntcallv_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[0]]))
                                 ntcallv_fh.write(f"\t{(nt_call_dict_dict[POS][sorted_calls[0]]/total):.3f}")
-                            if nt_call_dict_dict[POS][sorted_calls[1]] /total  > min_abund:
+                            if (nt_call_dict_dict[POS][sorted_calls[1]] > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[1]] /total > args.min_samp_abund):
                                 ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
                                 if sorted_calls[1] != ref[1][POS-1] and args.ntvar == 1:
                                     ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
-                                if nt_call_dict_dict[POS][sorted_calls[2]] /total  > min_abund:
+                                if (nt_call_dict_dict[POS][sorted_calls[2]] > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[2]] /total > args.min_samp_abund):
                                     ntcall_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
                                     if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
                                         ntcallv_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
                             if args.ntvar == 1:
                                 ntcallv_fh.write("\n")
 
-                        elif nt_call_dict_dict[POS][sorted_calls[1]] /total  > min_abund:
+                        elif (nt_call_dict_dict[POS][sorted_calls[1]] > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[1]] /total > args.min_samp_abund):
                             if args.ntvar == 1:
                                 ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1])
                                 ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
                                 ntcallv_fh.write("\t"+str(total)+"\t\t")
                                 ntcallv_fh.write(f"\t")
-                            ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
-                            if sorted_calls[1] != ref[1][POS-1]:
                                 ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
-                            if nt_call_dict_dict[POS][sorted_calls[2]] /total  > min_abund:
+                            ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
+                            if (nt_call_dict_dict[POS][sorted_calls[2]] > args.min_count) and(nt_call_dict_dict[POS][sorted_calls[2]] /total > args.min_samp_abund):
                                 ntcall_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
                                 if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
                                     ntcallv_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
@@ -936,40 +955,41 @@ def SAMparse(args, ref, refprot, file): # process SAM files
             covar_fh.write("Co-Variants\tCount\tAbundance\n")
             sortedcombos = sorted(combinations, key=combinations.__getitem__, reverse=True)
             for key in sortedcombos:
-                if combinations[key] / sam_read_count >= min_abund and args.wgs == 0:
-                    covar_fh.write(key+"\t"+str(combinations[key])+"\t"+f"{(combinations[key]/sam_read_count):.3f}\n")
-                elif args.wgs == 1:
-                    coveragepercent = 0
-                        # print(key)
-                    splitcombos = key.split()
-                    if len(splitcombos) == 1:
-                        coveragePOS = ''
-                        for c in key:
-                            if c.isdigit():
-                                coveragePOS += c
-                            else:
-                                break
-                        coveragepercent = combinations[key] / coverage[int(coveragePOS)]
-                    else:
-                        startcovPOS = ''
-                        for c in splitcombos[0]:
-                            if c.isdigit():
-                                startcovPOS += c
-                            else:
-                                break
-                        endcovPOS = ''
-                        for c in splitcombos[-1]:
-                            if c.isdigit():
-                                endcovPOS += c
-                            else:
-                                break
-                        coveragevals = []
-                        for i in range(int(startcovPOS), int(endcovPOS)+1):
-                            coveragevals.append(coverage[i])
-                        mincov = min(coverval for coverval in coveragevals)
-                        coveragepercent = combinations[key] / mincov
-                    if coveragepercent >= min_abund:
-                        covar_fh.write(f"{key}\t{combinations[key]}\t{coveragepercent:.3f}\n")
+                if (combinations[key] >= args.min_count):
+                    if (combinations[key] / sam_read_count >= args.min_samp_abund) and args.wgs == 0:
+                        covar_fh.write(key+"\t"+str(combinations[key])+"\t"+f"{(combinations[key]/sam_read_count):.3f}\n")
+                    elif args.wgs == 1:
+                        coveragepercent = 0
+                            # print(key)
+                        splitcombos = key.split()
+                        if len(splitcombos) == 1:
+                            coveragePOS = ''
+                            for c in key:
+                                if c.isdigit():
+                                    coveragePOS += c
+                                else:
+                                    break
+                            coveragepercent = combinations[key] / coverage[int(coveragePOS)]
+                        else:
+                            startcovPOS = ''
+                            for c in splitcombos[0]:
+                                if c.isdigit():
+                                    startcovPOS += c
+                                else:
+                                    break
+                            endcovPOS = ''
+                            for c in splitcombos[-1]:
+                                if c.isdigit():
+                                    endcovPOS += c
+                                else:
+                                    break
+                            coveragevals = []
+                            for i in range(int(startcovPOS), int(endcovPOS)+1):
+                                coveragevals.append(coverage[i])
+                            mincov = min(coverval for coverval in coveragevals)
+                            coveragepercent = combinations[key] / mincov
+                        if coveragepercent >= args.min_samp_abund:
+                            covar_fh.write(f"{key}\t{combinations[key]}\t{coveragepercent:.3f}\n")
 
                     # \t{coveragepercent:.3f}
             covar_fh.close()
@@ -1006,19 +1026,19 @@ def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
             elif len(seq.split(' ')) == 1:
                 passedseqs[seq] = max(1, args.beta)
 
-    if args.min_abundance1 < 1:
-        min_abund = args.min_abundance1 * covardict['total']
+    if args.min_samp_abund < 1:
+        min_count = args.min_samp_abund * covardict['total']
     else:
-        min_abund = args.min_abundance1
+        min_count = args.min_samp_abund
 
     if args.pass_out == 1: # write passed covars to file if enabled
         fh_pass = open(samp+"_covar_pass.tsv", "w")
         fh_pass.write(f"{samp}({covardict['total']})\tCount\tAbundance\tPass Ratio\n")
         for seq in preservedseqs:
-            if covardict[seq] >= min_abund:
+            if covardict[seq] >= min_count:
                 fh_pass.write(f"{seq}\t{covardict[seq]}\t{(covardict[seq]/covardict['total']):.3f}\t{preservedseqs[seq]}*\n")
         for seq in passedseqs:
-            if covardict[seq] >= min_abund:
+            if covardict[seq] >= min_count:
                 fh_pass.write(f"{seq}\t{covardict[seq]}\t{(covardict[seq]/covardict['total']):.3f}\t{passedseqs[seq]}\n")
         fh_pass.close
 
@@ -1077,7 +1097,7 @@ def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
     fh_deconv.write(f"{samp}({covardict['total']}) | ({newtotal})\tCount\tAbundance\n")
     sorted_deconved = sorted(deconved, key = deconved.__getitem__, reverse = True)
     for seq in sorted_deconved: # write deconv
-        if deconved[seq] >= min_abund:
+        if deconved[seq] >= min_count:
             fh_deconv.write(f"{seq}\t{deconved[seq]}\t{(deconved[seq]/newtotal):.3f}\n")
     fh_deconv.close
 
@@ -1190,17 +1210,17 @@ def chimrm(args, samp, seqs): # chimera removed process
 
     total = seqs['total']
     del seqs['total']
-    if args.min_abundance1 < 1:
-        min_abund = args.min_abundance1 * total
+    if args.min_samp_abund < 1:
+        min_count = args.min_samp_abund * total
     else:
-        min_abund = args.min_abundance1
+        min_count = args.min_samp_abund
     sorted_seqs = sorted(seqs, key=seqs.__getitem__, reverse=True)
     fh_dechime = open(f"{samp}_a{args.alpha}f{args.foldab}rd{args.redist}_chim_rm.tsv",'w')
     fh_dechime.write(f"{samp}({int(total)})\n")
     fh_dechime.write("Sequences\tCount\tAbundance\n")
     for seq in seqs: # write chim_rm seqs
         abund = seqs[seq]/total
-        if seqs[seq] >= min_abund:
+        if seqs[seq] >= min_count:
             fh_dechime.write(f"{seq}\t{round(seqs[seq])}\t{abund:.3f}\n")
 
     fh_dechime.close
@@ -1389,7 +1409,7 @@ def main():
 
                         else:
                             if not splitline[1] == 'Count':
-                                if float(splitline[2]) >= args.min_abundance2:
+                                if float(splitline[2]) >= args.min_col_abund:
                                     covar_dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
                                     all_covars[splitline[0]] = 1
 
@@ -1410,7 +1430,7 @@ def main():
 
                         else:
                             if not splitline[1] == 'Count':
-                                if float(splitline[2]) >= args.min_abundance2:
+                                if float(splitline[2]) >= args.min_col_abund:
                                     seq_dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
                                     all_seqs[splitline[0]] = 1
 
@@ -1433,7 +1453,7 @@ def main():
                                 sample_line = splitline[0]
                                 deconv_dict_dict[sample_line] = {}
                             else:
-                                if float(splitline[2]) >= args.min_abundance2:
+                                if float(splitline[2]) >= args.min_col_abund:
                                     deconv_dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
                                     all_deconv[splitline[0]] = 1
 
@@ -1456,7 +1476,7 @@ def main():
                                 sample_line = splitline[0]
                                 pass_dict_dict[sample_line] = {}
                             else:
-                                if float(splitline[2]) >= args.min_abundance2:
+                                if float(splitline[2]) >= args.min_col_abund:
                                     pass_dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
                                     all_pass[splitline[0]] = 1
 
@@ -1476,7 +1496,7 @@ def main():
 
                         else:
                             if not splitline[1] == 'Count':
-                                if float(splitline[2]) >= args.min_abundance2:
+                                if float(splitline[2]) >= args.min_col_abund:
                                     cr_dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
                                     all_cr[splitline[0]] = 1
 
