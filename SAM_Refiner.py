@@ -25,7 +25,6 @@ def arg_parser():
     )
     parser.add_argument(
         '-S', '--Sam_files',
-        type=argparse.FileType('r'),
         nargs='*',
         dest='Sam_files',
         action='append',
@@ -214,6 +213,13 @@ def arg_parser():
         choices=[0, 1],
         help='Enable/Disable (1/0) covar deconv, default enabled (--deconv 1)'
     )
+    parser.add_argument(
+        '--mp',
+        type=int,
+        default=4,
+        choices=range(1,21),
+        help='set number of processes SAM Refiner will run in parallel, default = 4 (--mp 4)'
+    )
 
     args = parser.parse_args()
 
@@ -248,12 +254,12 @@ def arg_parser():
         args.ntabund=0.001
 
     if args.max_dist < 0:
-        print(f"--max_dist must be non-negative, defaulting to 50")
-        args.max_dist=50
+        print(f"--max_dist must be non-negative, defaulting to 40")
+        args.max_dist=40
 
     if args.max_covar < 0:
         print(f"--max_covar must be non-negative, defaulting to 8")
-        args.max_dist=8
+        args.max_covar=8
 
     if args.chim_in_abund < 0:
         print(f"--chim_in_abund must be non-negative, defaulting to 0.001")
@@ -403,7 +409,8 @@ def getCombos(qlist, clen): # returns combinations of single polymorphisms in a 
     return(combos)
 
 def SAMparse(args, ref, refprot, file): # process SAM files
-    samp=file.name[0: -4]
+
+    samp=file[0: -4]
     print(f"Starting {samp} processing")
     nt_call_dict_dict = {}
     indel_dict = {}
@@ -417,8 +424,8 @@ def SAMparse(args, ref, refprot, file): # process SAM files
         readID = ''
         reads_fh = open(samp+'_reads.tsv', "w")
 
-
-    for line in file:
+    sam_fh = open(file, "r")
+    for line in sam_fh:
         if not line.startswith('@'): # ignore header lines
             splitline = line.split("\t")
             if ref[0].upper().startswith(splitline[2].upper()): # check map ID matches referecne ID
@@ -698,7 +705,7 @@ def SAMparse(args, ref, refprot, file): # process SAM files
                             coverage[i] = abund_count
     if args.read == 1:
         reads_fh.close()
-
+    sam_fh.close()
     # END SAM LINES
     print(f"End SAM parse for {samp}")
     # print(coverage)
@@ -1208,6 +1215,7 @@ def main():
 
     if args.ref:
         ref = get_ref(args.ref) # get the reference ID and sequence from the FASTA file
+        args.ref.close()
         if ref[1] == '':
             print('Reference not recognized as a Fasta format, skipping SAM parsing')
         else:
@@ -1218,11 +1226,14 @@ def main():
             except:
                 for file in os.listdir(os.getcwd()):
                     if (file.lower()).endswith('.sam'):
-                        SAMs.append(open(file, "r"))
+                        SAMs.append(file)
             else:
                 for files in args.Sam_files:
                     for file in files:
-                        SAMs.append(file)
+                        if os.path.isfile(file):
+                            SAMs.append(file)
+                        else:
+                            print(f"Can't find {file}, skipping")
             refprot = ''
             if args.AAreport == 1: # make an Amino Acid sequence based on the reference sequence
                 for x in range(0, (len(ref[1])-1)//3):
@@ -1232,13 +1243,22 @@ def main():
                     refprot = refprot + '?'
 
             processes = []
+            pn = 0
             for file in SAMs:
-                p = Process(target=SAMparse, args=(args, ref, refprot, file,)) # parallel processing for each SAM file
-                p.start()
-                processes.append(p)
+                if args.mp > 1:
+                    pn += 1
+                    if pn > args.mp:
+                        processes[(pn-args.mp)].join()
+                    p = Process(target=SAMparse, args=(args, ref, refprot, file,)) # parallel processing for each SAM file
+                    p.start()
+                    processes.append(p)
+                else:
+                    SAMparse(args, ref, refprot, file)
+                
             # # END SAM FILES
-            for p in processes:
-                p.join()
+            if args.mp > 1:
+                for p in processes:
+                    p.join()
             print(f"End Sam Parsing Output")
     else:
         print('No reference provided, skipping SAM parsing')
@@ -1298,28 +1318,43 @@ def main():
 
     if args.deconv == 1:
         deconv_procs = []
+        dcpn = 0
         for samp in in_covars: # parallel processes for covar deconvolution of each sample
-            # cvdeconv(samp, in_covars[samp], in_seqs[samp])
-            deconv_p = Process(target=cvdeconv, args=(args, samp, in_covars[samp], in_seqs[samp],))
-            deconv_p.start()
-            deconv_procs.append(deconv_p)
+            if args.mp > 1:
+                dcpn += 1
+                if dcpn > args.mp:
+                    processes[(dcpn-args.mp)].join()
+                deconv_p = Process(target=cvdeconv, args=(args, samp, in_covars[samp], in_seqs[samp],))
+                deconv_p.start()
+                deconv_procs.append(deconv_p)
+            else:
+                cvdeconv(args, samp, in_covars[samp], in_seqs[samp])
 
-        for deconv_p in deconv_procs:
-            deconv_p.join()
+        if args.mp > 1:
+            for deconv_p in deconv_procs:
+                deconv_p.join()
 
 
 
 
     if args.chim_rm == 1:
         cr_procs = []
+        cppn = 0
         for samp in in_seqs: # parallel processes for chim removed of each sample, must be done second, as it modifies the sequence dictionary
             # chimrm(samp, in_seqs[samp])
-            chimrm_p = Process(target=chimrm, args=(args, samp, in_seqs[samp],))
-            chimrm_p.start()
-            cr_procs.append(chimrm_p)
+            if args.mp > 1:
+                cppn += 1
+                if cppn > args.mp:
+                    processes[(cppn-args.mp)].join()
+                chimrm_p = Process(target=chimrm, args=(args, samp, in_seqs[samp],))
+                chimrm_p.start()
+                cr_procs.append(chimrm_p)
+            else:
+                chimrm(args, samp, in_seqs[samp])
 
-        for chimrm_p in cr_procs:
-            chimrm_p.join()
+        if args.mp > 1:
+            for chimrm_p in cr_procs:
+                chimrm_p.join()
 
 # begin collection of sample outputs
     if args.collect == 1:
