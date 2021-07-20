@@ -6,6 +6,7 @@ import os
 import sys
 import argparse
 import itertools
+import time
 from multiprocessing import Process
 from pathlib import Path
 
@@ -515,6 +516,7 @@ def SAMparse(args, ref, refprot, file): # process SAM files
                                         indel_dict[istring] += abund_count
 
                                     if args.AAreport == 1 and (run_length % 3 == 0):
+                                        
                                         iProt = ''
                                         if iPOS % 3 == 1:
                                             for x in range(0, (run_length//3)):
@@ -522,17 +524,24 @@ def SAMparse(args, ref, refprot, file): # process SAM files
                                                 iProt = iProt + AA
                                             mutations.append(istring + '(' + str((iPOS//3)+1) + iProt + ')')
                                         elif iPOS % 3 == 2:
-                                            ipSeq = query_seq[query_pos-1:query_pos+run_length+2]
+                                            if query_pos > 0:
+                                                ipSeq = query_seq[query_pos-1:query_pos+run_length+2]
+                                            else:
+                                                ipSeq = "XXX"+query_seq[query_pos+2:query_pos+run_length+2]
                                             for x in range(0, (run_length//3)+1):
                                                 AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
                                                 iProt = iProt + AA
                                             mutations.append(istring + '(' + str((iPOS//3)+1) + iProt + ')')
                                         else:
-                                            ipSeq = query_seq[query_pos-2:query_pos+run_length+1]
+                                            if query_pos > 1:
+                                                ipSeq = query_seq[query_pos-2:query_pos+run_length+1]
+                                            else:
+                                                ipSeq = "XXX"+query_seq[query_pos+1:query_pos+run_length+1]
+                                            
                                             for x in range(0, (run_length//3)+1):
                                                 AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
                                                 iProt = iProt + AA
-                                            mutations.append(istring + '(nn' + ipSeq + str((iPOS//3)+1) + iProt + ')')
+                                            mutations.append(istring + '(' + str((iPOS//3)+1) + iProt + ')')
                                     else:
                                         mutations.append(istring)
 
