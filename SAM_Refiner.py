@@ -403,13 +403,15 @@ def singletCodon(ntPOS, nt, ref): # process to return the AA and protein seq. po
     AAPOS = (ntPOS-1)//3
     AAmod = (ntPOS-1)%3
     codon = ""
-
-    if AAmod == 0:
-        codon = nt+ref[1][ntPOS]+ref[1][ntPOS+1]
-    elif AAmod == 1:
-        codon = ref[1][ntPOS-2]+nt+ref[1][ntPOS]
-    elif AAmod == 2:
-        codon = ref[1][ntPOS-3]+ref[1][ntPOS-2]+nt
+    try:
+        if AAmod == 0:
+            codon = nt+ref[1][ntPOS]+ref[1][ntPOS+1]
+        elif AAmod == 1:
+            codon = ref[1][ntPOS-2]+nt+ref[1][ntPOS]
+        elif AAmod == 2:
+            codon = ref[1][ntPOS-3]+ref[1][ntPOS-2]+nt
+    except:
+        codon = "XXX"
 
     return(AAPOS+1, AAcall(codon))
 
