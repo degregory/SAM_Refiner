@@ -1,12 +1,26 @@
+[![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/samrefiner/README.html)
+![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-brightgreen.svg)
+
 # SAM_Refiner
 A program for gathering variant information from a SAM formated files.  SAM_Refiner requires a python interpreter to run.
 
-## Default Usage
-	python SAM_Refiner -r reference.fasta
+
+### BioConda Install and Use
+
+```bash
+$ conda install samrefiner
+$ SAM_Refiner -h
+```
+
+### Default Usage
+
+```bash
+$ python SAM_Refiner -r reference.fasta
+```
 
 ## Introduction
 
-SAM Refiner processes SAM formated files generated from sequencing mapping programs such as Bowtie2 or BWA to collect variant information relative to a reference sequence and remove chimeric sequences.  For details on the processing and outputs, please refer to [the manuscript][link].  If you use SAM Refiner for any published work, please cite [Gregory, DA. et al.][link].
+SAM Refiner processes SAM formated files generated from sequencing mapping programs such as [Bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) or [MiniMap2](https://github.com/lh3/minimap2) to collect variant information relative to a reference sequence and remove chimeric sequences.  For details on the processing and outputs, please refer to [the manuscript][link].  If you use SAM Refiner for any published work, please cite [Gregory, DA. et al.][link].
 
 ## Updates
 2021-07-11
