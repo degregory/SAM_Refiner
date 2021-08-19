@@ -6,7 +6,7 @@ A program for gathering variant information from a SAM formated files.  SAM_Refi
 
 ## Introduction
 
-SAM Refiner processes SAM formated files generated from sequencing mapping programs such as Bowtie2 or BWA to collect variant information relative to a reference sequence and remove chimeric sequences.  For details on the processing and outputs, please refer to [the manuscript][doi].  If you use SAM Refiner for any published work, please cite Gregory, DA. et al. [doi].
+SAM Refiner processes SAM formated files generated from sequencing mapping programs such as Bowtie2 or BWA to collect variant information relative to a reference sequence and remove chimeric sequences.  For details on the processing and outputs, please refer to [the manuscript][link].  If you use SAM Refiner for any published work, please cite [Gregory, DA. et al.] [link].
 
 ## Updates
 2021-07-11
@@ -40,6 +40,7 @@ Currently working on a nt call output for only variant calls.  Enabled with --nt
 
 
 [doi]: https://doi.org/10.1101/2021.06.24.21259469
+[link]: https://www.mdpi.com/1999-4915/13/8/1647
 
 
 
