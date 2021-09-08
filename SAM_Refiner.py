@@ -868,7 +868,7 @@ def SAMparse(args, ref, refprot, file): # process SAM files
 
                             if args.ntvar == 1:
                                 ntcallv_fh.write("\n")
-                        elif (nt_call_dict_dict[POS][sorted_calls[1]] /total > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[1]] /total > args.min_samp_abund):
+                        elif (nt_call_dict_dict[POS][sorted_calls[1]] >= args.min_count) and ((nt_call_dict_dict[POS][sorted_calls[1]] / total) >= args.min_samp_abund):
                             if args.ntvar == 1:
                                 ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1]+"\t"+str(AAinfo[0])+"\t"+AAinfo[1])
                                 ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
@@ -913,7 +913,7 @@ def SAMparse(args, ref, refprot, file): # process SAM files
                                 ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
                                 ntcallv_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[0]]))
                                 ntcallv_fh.write(f"\t{(nt_call_dict_dict[POS][sorted_calls[0]]/total):.3f}")
-                            if (nt_call_dict_dict[POS][sorted_calls[1]] > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[1]] /total > args.min_samp_abund):
+                            if (nt_call_dict_dict[POS][sorted_calls[1]] > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[1]] / total > args.min_samp_abund):
                                 ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
                                 if sorted_calls[1] != ref[1][POS-1] and args.ntvar == 1:
                                     ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
@@ -932,7 +932,7 @@ def SAMparse(args, ref, refprot, file): # process SAM files
                                 ntcallv_fh.write(f"\t")
                                 ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
                             ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
-                            if (nt_call_dict_dict[POS][sorted_calls[2]] > args.min_count) and(nt_call_dict_dict[POS][sorted_calls[2]] /total > args.min_samp_abund):
+                            if (nt_call_dict_dict[POS][sorted_calls[2]] > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[2]] /total > args.min_samp_abund):
                                 ntcall_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
                                 if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
                                     ntcallv_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
