@@ -7,7 +7,7 @@ import sys
 import argparse
 import itertools
 import time
-from multiprocessing import Process
+from multiprocessing import Process, Pool
 from pathlib import Path
 
 
@@ -1051,7 +1051,7 @@ def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
         for seq in passedseqs:
             if covardict[seq] >= min_count:
                 fh_pass.write(f"{seq}\t{covardict[seq]}\t{(covardict[seq]/covardict['total']):.3f}\t{passedseqs[seq]}\n")
-        fh_pass.close
+        fh_pass.close()
 
     # sort passed covars
     lensortedpassed = sorted(passedseqs, key = lambda key : len(key.split(' ')), reverse=True)
@@ -1110,7 +1110,7 @@ def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
     for seq in sorted_deconved: # write deconv
         if deconved[seq] >= min_count:
             fh_deconv.write(f"{seq}\t{deconved[seq]}\t{(deconved[seq]/newtotal):.3f}\n")
-    fh_deconv.close
+    fh_deconv.close()
 
     print(f"End covar deconv out for {samp}") # END COVAR DECONV OUT
 
@@ -1234,9 +1234,73 @@ def chimrm(args, samp, seqs): # chimera removed process
         if seqs[seq] >= min_count:
             fh_dechime.write(f"{seq}\t{round(seqs[seq])}\t{abund:.3f}\n")
 
-    fh_dechime.close
+    fh_dechime.close()
     print(f"End chim_rm out for {samp}") # END CHIM RM DECONV OUT
     return()
+
+def chimproc(args, samp):
+    if args.deconv == 1:
+            in_covars = {}
+            in_seqs = {}
+            try:
+                seqin_file = open(samp+'_unique_seqs.tsv', 'r')
+                for line in seqin_file:
+                    lineparts = line.strip("\n\r").split("\t")
+                    try:
+                        lineparts[1]
+                    except:
+                        in_seqs = {'total' : int(lineparts[0].split("(")[1][0:-1])}
+                    else:
+                        if lineparts[1] != 'Count':
+                            if float(lineparts[2]) >= args.chim_in_abund:
+                                in_seqs[lineparts[0]] = float(lineparts[1])
+                seqin_file.close()
+                if args.chim_rm == 1:
+                    chimrm(args, samp, in_seqs)
+            except:
+                print(f"Could not open {samp}_unique_seqs.tsv")
+            
+            try:
+                covin_file = open(samp+'_covars.tsv', 'r')
+                for line in covin_file:
+                    lineparts = line.strip("\n\r").split("\t")
+                    try:
+                        lineparts[1]
+                    except:
+                        in_covars = {'total' : int(lineparts[0].split("(")[1][0:-1]),
+                                                  'singles' : {}
+                                                  }
+                    else:
+                        if lineparts[1] != 'Count':
+                            if float(lineparts[2]) >= args.chim_in_abund:
+                                in_covars[lineparts[0]] = int(lineparts[1])
+                                if len(lineparts[0].split(' ')) == 1:
+                                    in_covars['singles'][lineparts[0]] = int(lineparts[1])
+                covin_file.close()
+                if in_covars and in_seqs:
+                    cvdeconv(args, samp, in_covars, in_seqs)
+            except:
+                print(f"Could not open {samp}_covars.tsv")
+                
+    elif args.chim_rm == 1:
+            in_covars = {}
+            in_seqs = {}
+            try:
+                seqin_file = open(samp+'_unique_seqs.tsv', 'r')
+                for line in seqin_file:
+                    lineparts = line.strip("\n\r").split("\t")
+                    try:
+                        lineparts[1]
+                    except:
+                        in_seqs = {'total' : int(lineparts[0].split("(")[1][0:-1])}
+                    else:
+                        if lineparts[1] != 'Count':
+                            if float(lineparts[2]) >= args.chim_in_abund:
+                                in_seqs[lineparts[0]] = float(lineparts[1])
+                seqin_file.close()
+                chimrm(args, samp, in_seqs)
+            except:
+                print(f"Could not open {samp}_unique_seqs.tsv")
 
 def main():
 
@@ -1272,120 +1336,23 @@ def main():
                     refprot = refprot + AA
                 if (len(ref[1])-1)%3 != 0:
                     refprot = refprot + '?'
-
-            processes = []
-            pn = 0
-            for file in SAMs:
-                if args.mp > 1:
-                    pn += 1
-                    if pn > args.mp:
-                        processes[(pn-args.mp)].join()
-                    p = Process(target=SAMparse, args=(args, ref, refprot, file,)) # parallel processing for each SAM file
-                    p.start()
-                    processes.append(p)
-                else:
-                    SAMparse(args, ref, refprot, file)
-                
-            # # END SAM FILES
-            if args.mp > 1:
-                for p in processes:
-                    p.join()
+            ta = []
+            args.ref = ''
+            with Pool(processes=args.mp) as pool:
+                pool.starmap(SAMparse, zip(itertools.repeat(args), itertools.repeat(ref), itertools.repeat(refprot), SAMs))
             print(f"End Sam Parsing Output")
     else:
         print('No reference provided, skipping SAM parsing')
 
-    in_covars = {}
-    in_seqs = {}
+
+    seq_files = []
     # Begin chimera removal if enabled
     if args.chim_rm == 1 or args.deconv == 1:
         for file in os.listdir(os.getcwd()):
-            sampline = []
-            if file.endswith('_covars.tsv'): # get covars for covar deconvolution
-                if args.deconv == 1:
-                    try:
-                        open(file, 'r')
-                    except:
-                        print(f"Can't open {file}, skipping")
-                    else:
-                        covar_fh = open(file, 'r')
-                        for line in covar_fh:
-                            lineparts = line.strip("\n\r").split("\t")
-                            try:
-                                lineparts[1]
-                            except:
-                                sampline = lineparts[0].split("(")
-                                in_covars[sampline[0]] = {'total' : int(sampline[1][0:-1]),
-                                                          'singles' : {}
-                                                          }
-                            else:
-                                if lineparts[1] != 'Count':
-                                    if float(lineparts[2]) >= args.chim_in_abund:
-                                        in_covars[sampline[0]][lineparts[0]] = int(lineparts[1])
-                                        if len(lineparts[0].split(' ')) == 1:
-                                            in_covars[sampline[0]]['singles'][lineparts[0]] = int(lineparts[1])
-
-                        covar_fh.close
-
-
             if file.endswith('_seqs.tsv'): # get unique sequences for chimera removal
-                try:
-                    open(file, 'r')
-                except:
-                    print(f"Can't open {file}, skipping")
-                else:
-                    seq_fh = open(file, 'r')
-                    for line in seq_fh:
-                        lineparts = line.strip("\n\r").split("\t")
-                        try:
-                            lineparts[1]
-                        except:
-                            sampline = lineparts[0].split("(")
-                            in_seqs[sampline[0]] = {'total' : int(sampline[1][0:-1])}
-                        else:
-                            if lineparts[1] != 'Count':
-                                if float(lineparts[2]) >= args.chim_in_abund:
-                                    in_seqs[sampline[0]][lineparts[0]] = float(lineparts[1])
-                    seq_fh.close
-
-    if args.deconv == 1:
-        deconv_procs = []
-        dcpn = 0
-        for samp in in_covars: # parallel processes for covar deconvolution of each sample
-            if args.mp > 1:
-                dcpn += 1
-                if dcpn > args.mp:
-                    processes[(dcpn-args.mp)].join()
-                deconv_p = Process(target=cvdeconv, args=(args, samp, in_covars[samp], in_seqs[samp],))
-                deconv_p.start()
-                deconv_procs.append(deconv_p)
-            else:
-                cvdeconv(args, samp, in_covars[samp], in_seqs[samp])
-
-        if args.mp > 1:
-            for deconv_p in deconv_procs:
-                deconv_p.join()
-
-
-
-
-    if args.chim_rm == 1:
-        cr_procs = []
-        cppn = 0
-        for samp in in_seqs: # parallel processes for chim removed of each sample, must be done second, as it modifies the sequence dictionary
-            # chimrm(samp, in_seqs[samp])
-            if args.mp > 1:
-                cppn += 1
-                if cppn > args.mp:
-                    processes[(cppn-args.mp)].join()
-                chimrm_p = Process(target=chimrm, args=(args, samp, in_seqs[samp],))
-                chimrm_p.start()
-                cr_procs.append(chimrm_p)
-            else:
-                chimrm(args, samp, in_seqs[samp])
-
-        if args.mp > 1:
-            for chimrm_p in cr_procs:
-                chimrm_p.join()
+                seq_files.append(file[0:-16])
+        with Pool(processes=args.mp) as pool:
+            pool.starmap(chimproc, zip(itertools.repeat(args), seq_files))
 
 # begin collection of sample outputs
     if args.collect == 1:
@@ -1423,6 +1390,7 @@ def main():
                                 if float(splitline[2]) >= args.min_col_abund:
                                     covar_dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
                                     all_covars[splitline[0]] = 1
+                    samp.close()
 
 
             if file.endswith('_seqs.tsv'):
@@ -1444,6 +1412,7 @@ def main():
                                 if float(splitline[2]) >= args.min_col_abund:
                                     seq_dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
                                     all_seqs[splitline[0]] = 1
+                    samp.close()
 
             if file.endswith('_deconv.tsv'):
                 try:
@@ -1467,6 +1436,7 @@ def main():
                                 if float(splitline[2]) >= args.min_col_abund:
                                     deconv_dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
                                     all_deconv[splitline[0]] = 1
+                    samp.close()
 
             if file.endswith('_pass.tsv'):
                 try:
@@ -1490,6 +1460,7 @@ def main():
                                 if float(splitline[2]) >= args.min_col_abund:
                                     pass_dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
                                     all_pass[splitline[0]] = 1
+                    samp.close()
 
             if file.endswith('_chim_rm.tsv'):
                 try:
@@ -1510,6 +1481,7 @@ def main():
                                 if float(splitline[2]) >= args.min_col_abund:
                                     cr_dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
                                     all_cr[splitline[0]] = 1
+                    samp.close()
 
         if len(covar_dict_dict) > 0:
             if args.colID == '':
