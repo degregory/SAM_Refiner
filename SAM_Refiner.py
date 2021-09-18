@@ -1240,47 +1240,48 @@ def chimrm(args, samp, seqs): # chimera removed process
 
 def chimproc(args, samp):
     if args.deconv == 1:
-            in_covars = {}
-            in_seqs = {}
-            try:
-                seqin_file = open(samp+'_unique_seqs.tsv', 'r')
-                for line in seqin_file:
-                    lineparts = line.strip("\n\r").split("\t")
-                    try:
-                        lineparts[1]
-                    except:
-                        in_seqs = {'total' : int(lineparts[0].split("(")[1][0:-1])}
-                    else:
-                        if lineparts[1] != 'Count':
-                            if float(lineparts[2]) >= args.chim_in_abund:
-                                in_seqs[lineparts[0]] = float(lineparts[1])
-                seqin_file.close()
-                if args.chim_rm == 1:
-                    chimrm(args, samp, in_seqs)
-            except:
-                print(f"Could not open {samp}_unique_seqs.tsv")
+        in_covars = {}
+        in_seqs = {}
+        try:
+            seqin_file = open(samp+'_unique_seqs.tsv', 'r')
+            for line in seqin_file:
+                lineparts = line.strip("\n\r").split("\t")
+                try:
+                    lineparts[1]
+                except:
+                    in_seqs = {'total' : int(lineparts[0].split("(")[1][0:-1])}
+                else:
+                    if lineparts[1] != 'Count':
+                        if float(lineparts[2]) >= args.chim_in_abund:
+                            in_seqs[lineparts[0]] = float(lineparts[1])
+            seqin_file.close()
+        except:
+            print(f"Reading of {samp}_unique_seqs.tsv failed")
+        
+        try:
+            covin_file = open(samp+'_covars.tsv', 'r')
+            for line in covin_file:
+                lineparts = line.strip("\n\r").split("\t")
+                try:
+                    lineparts[1]
+                except:
+                    in_covars = {'total' : int(lineparts[0].split("(")[1][0:-1]),
+                                              'singles' : {}
+                                              }
+                else:
+                    if lineparts[1] != 'Count':
+                        if float(lineparts[2]) >= args.chim_in_abund:
+                            in_covars[lineparts[0]] = int(lineparts[1])
+                            if len(lineparts[0].split(' ')) == 1:
+                                in_covars['singles'][lineparts[0]] = int(lineparts[1])
+            covin_file.close()
+            if in_covars and in_seqs:
+                cvdeconv(args, samp, in_covars, in_seqs)
+        except:
+            print(f"Reading of {samp}_covars.tsv failed")
             
-            try:
-                covin_file = open(samp+'_covars.tsv', 'r')
-                for line in covin_file:
-                    lineparts = line.strip("\n\r").split("\t")
-                    try:
-                        lineparts[1]
-                    except:
-                        in_covars = {'total' : int(lineparts[0].split("(")[1][0:-1]),
-                                                  'singles' : {}
-                                                  }
-                    else:
-                        if lineparts[1] != 'Count':
-                            if float(lineparts[2]) >= args.chim_in_abund:
-                                in_covars[lineparts[0]] = int(lineparts[1])
-                                if len(lineparts[0].split(' ')) == 1:
-                                    in_covars['singles'][lineparts[0]] = int(lineparts[1])
-                covin_file.close()
-                if in_covars and in_seqs:
-                    cvdeconv(args, samp, in_covars, in_seqs)
-            except:
-                print(f"Could not open {samp}_covars.tsv")
+        if args.chim_rm == 1:
+            chimrm(args, samp, in_seqs)
                 
     elif args.chim_rm == 1:
             in_covars = {}
