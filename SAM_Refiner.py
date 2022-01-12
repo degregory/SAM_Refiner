@@ -677,7 +677,6 @@ def faSAMparse(args, ref, file): # process SAM files
 
                                 running_offset -= run_length
                                 offsets[q_pars_pos+POS+1] = running_offset
-                                print(f"D\t{str(q_pars_pos+POS)}\t{str(running_offset)}")
                                 
 
                                 if args.AAreport == 1 and (run_length % 3 == 0) and not ((q_pars_pos+POS) % 3 == 1 ):
@@ -736,7 +735,6 @@ def faSAMparse(args, ref, file): # process SAM files
 
                                 for ntPOS in range(query_pos, query_pos+run_length):
                                     offsets[refPOS+ntPOS+1] = running_offset
-                                    print(f"M\t{str(refPOS+ntPOS+1)}\t{str(running_offset)}")
                                     if query_seq[ntPOS] == 'A' or query_seq[ntPOS] == 'T' or query_seq[ntPOS] == 'C' or query_seq[ntPOS] == 'G' or query_seq[ntPOS] == '-':
                                         if query_seq[ntPOS] != ref[1][refPOS+ntPOS-1]:
                                             if args.AAreport == 1 and args.AAcodonasMNP == 0:
@@ -859,7 +857,6 @@ def faSAMparse(args, ref, file): # process SAM files
                             for mut in codonchecked:
                                 if ":" in mut:
                                     if 'Del' in mut or 'insert' in mut:
-                                        print(mut)
                                         start = 0
                                         end = 0
                                         ntshift = 0
@@ -899,7 +896,7 @@ def faSAMparse(args, ref, file): # process SAM files
                                             new_aa_seq += AAcall(new_nt_seq[i*3:(i*3)+3])
                                                 
                                         MNP_muts.append(ref[1][start_nt-1:end_nt]+str(((start-1)*3)+1)+'-'+str(((end-1)*3)+3)+new_nt_seq+ '(' + ref[3][1][start-1:end] + str(start) + '-' + str(end) + new_aa_seq +')')
-                                        print(MNP_muts[-1])
+                                        
                                     else:
                                         split_MNP = mut.split(":")
                                         codon = ((int(split_MNP[0][1:-1])-1)//3)
