@@ -2,7 +2,7 @@
 ![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-brightgreen.svg)
 
 # SAM_Refiner
-A program for gathering variant information from a SAM formated files.  SAM_Refiner requires a python interpreter to run.
+A program for gathering variant information from a SAM formatted files.  SAM_Refiner requires a python interpreter to run.
 
 
 ### BioConda Install and Use
@@ -20,9 +20,12 @@ $ python SAM_Refiner -r reference.fasta
 
 ## Introduction
 
-SAM Refiner processes SAM formated files generated from sequencing mapping programs such as [Bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) or [MiniMap2](https://github.com/lh3/minimap2) to collect variant information relative to a reference sequence and remove chimeric sequences.  For details on the processing and outputs, please refer to [the manuscript][link].  If you use SAM Refiner for any published work, please cite [Gregory, DA. et al.][link].
+SAM Refiner processes SAM formatted files generated from sequencing mapping programs such as [Bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) or [MiniMap2](https://github.com/lh3/minimap2) to collect variant information relative to a reference sequence and remove chimeric sequences.  For details on the processing and outputs, please refer to [the manuscript][link].  If you use SAM Refiner for any published work, please cite [Gregory, DA. et al.][link].
 
 ## Updates
+2022-01-12
+Fixed errors, improved MNP processing, added preliminary function to use gb formatted file as reference (-r)
+
 2021-07-11
 Separated --min_abundance1 into --min_count and --min_samp_abund, --min_abundance2 now --min_col_abund
 
@@ -40,17 +43,18 @@ Added AA reporting to indel in seq and covar outputs.  Reports AA for inframe in
 
 
 2021-06-06 
-Added handling of non canonical NT calls.  Anything other than ATCG will not be recorded.
+Added handling of non canonical NT calls.  Anything other than ATCG- will not be recorded.
 Changed default --max_dist to 40
 
 
 
 
 ## In Progress
+Currently working on option to use gb format file for reference.  Mostly implemented, but not extensively tested.  Simply use -r to point to a gb file.  Likely won't work on files without CDS entries.
 
-Currently working to have a mode for whole genome sequencing.  Enabled with --wgs 1, but not yet fully implimented and tested.
+Mode for whole genome sequencing operable.  Enabled with --wgs 1, but not yet extensively tested.
 
-Currently working on a nt call output for only variant calls.  Enabled with --ntvar 1, but not yet fully implimented and tested.
+A nt call output for only variant calls operable.  Enabled with --ntvar 1, but not yet extensively tested.
 
 
 [doi]: https://doi.org/10.1101/2021.06.24.21259469
