@@ -504,7 +504,7 @@ def AAcall(codon): # amino acid / codon dictionary to return encoded AAs
         'GGC' : 'G',
         'GGA' : 'G',
         'GGG' : 'G',
-        
+
         '---' : '-'
     }
     AA = '?'
@@ -622,7 +622,7 @@ def faSAMparse(args, ref, file): # process SAM files
                                 if query_pos > 0:
                                     # add insertion to dict
                                     iPOS = q_pars_pos+POS
-                                    
+
                                     running_offset += run_length
 
                                     iSeq = query_seq[query_pos: query_pos+run_length]
@@ -676,8 +676,9 @@ def faSAMparse(args, ref, file): # process SAM files
                                 delstring = str(q_pars_pos+POS)+'-'+str(q_pars_pos+POS+run_length-1)+'Del'
 
                                 running_offset -= run_length
-                                offsets[q_pars_pos+POS+1] = running_offset
-                                
+                                for i in range(q_pars_pos+POS+1, q_pars_pos+POS+1+run_length):
+                                    offsets[i] = running_offset
+
 
                                 if args.AAreport == 1 and (run_length % 3 == 0) and not ((q_pars_pos+POS) % 3 == 1 ):
                                     if (q_pars_pos+POS) % 3 == 2:
@@ -696,9 +697,14 @@ def faSAMparse(args, ref, file): # process SAM files
                                         delstring = delstring + ')'
                                 elif args.AAreport == 1 and (run_length % 3 == 0):
                                     newAArefpos = (q_pars_pos+POS-1) // 3
-                                    delstring = delstring + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)] + str(newAArefpos+1) + '-' + str(newAArefpos+1+run_length//3)
-                                    for i in range(0, run_length//3):
-                                        delstring = delstring + '-'
+                                    if run_length // 3 == 1:
+                                        
+                                        delstring = delstring + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)] + str(newAArefpos+1) + '-' #  + str(newAArefpos+run_length//3)
+                                    
+                                    else:
+                                        delstring = delstring + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)] + str(newAArefpos+1) + '-' + str(newAArefpos+run_length//3)
+                                        for i in range(0, run_length//3):
+                                            delstring = delstring + '-'
                                     delstring = delstring + ')'
                                 elif args.AAreport == 1:
                                     delstring = delstring + '(fs)'
@@ -735,6 +741,9 @@ def faSAMparse(args, ref, file): # process SAM files
 
                                 for ntPOS in range(query_pos, query_pos+run_length):
                                     offsets[refPOS+ntPOS+1] = running_offset
+                                    if query_seq[ntPOS] == 'N':
+                                        if args.AAreport == 0 or args.AAcodonasMNP == 0:
+                                            mutations.append(ref[1][refPOS+ntPOS-1]+str(refPOS+ntPOS)+query_seq[ntPOS])
                                     if query_seq[ntPOS] == 'A' or query_seq[ntPOS] == 'T' or query_seq[ntPOS] == 'C' or query_seq[ntPOS] == 'G' or query_seq[ntPOS] == '-':
                                         if query_seq[ntPOS] != ref[1][refPOS+ntPOS-1]:
                                             if args.AAreport == 1 and args.AAcodonasMNP == 0:
@@ -790,29 +799,30 @@ def faSAMparse(args, ref, file): # process SAM files
                             for mut in mutations:
                                 if '(fs)' in mut:
                                     if MNP:
-                                        if '(fs)' in MNP[0]:
-                                            MNPend = 0
-                                            mutstart = 0
-                                            if 'Del' in MNP[0]:
-                                                MNPend = int(MNP[0].split('Del')[0].split('-')[1])
-                                            elif 'insert' in MNP[0]:
-                                                MNPend = int((MNP[0].split('(')[0].split('-')[0])) + 1
-                                            if 'Del' in mut:
-                                                mutstart = int(mut.split('Del')[0].split('-')[0])
-                                            elif 'insert' in mut:
-                                                mutstart = int((mut.split('(')[0].split('-')[0]))
-                                                
-                                            if mutstart - MNPend < 10: 
+                                        mutstart = 0
+                                        if 'Del' in mut:
+                                            mutstart = int(mut.split('Del')[0].split('-')[0])
+                                        elif 'insert' in mut:
+                                            mutstart = int((mut.split('(')[0].split('-')[0]))
+
+                                        MNPend = 0
+                                        if 'Del' in MNP[-1]:
+                                            MNPend = int(MNP[-1].split('Del')[0].split('-')[1])
+                                        elif 'insert' in MNP[-1]:
+                                            MNPend = int((MNP[-1].split('(')[0].split('-')[0]))
+                                        else:
+                                            MNPend = int(MNP[-1][1:-1])
+
+                                        if '(fs)' in MNP[-1]:
+                                            if mutstart - MNPend < 10:
                                                 ntshift = 0
-                                                for shift in [MNP[0], mut]:
-                                                    if 'Del' in shift:
-                                                        ntshift -= int(shift.split('Del')[0].split('-')[1]) - int(shift.split('Del')[0].split('-')[0]) + 1
-                                                    elif 'insert' in shift:
-                                                        ntshift += int(len(shift.split('(')[0].split('insert')[1]))
+                                                for single in [MNP[-1], mut]:
+                                                    if 'Del' in single:
+                                                        ntshift -= int(single.split('Del')[0].split('-')[1]) - int(single.split('Del')[0].split('-')[0]) + 1
+                                                    elif 'insert' in single:
+                                                        ntshift += int(len(single.split('(')[0].split('insert')[1]))
                                                 if ntshift % 3 == 0:
                                                     MNP.append(mut)
-                                                    codonchecked.append(":".join(MNP))
-                                                    MNP = []
                                                 else:
                                                     codonchecked.append(":".join(MNP))
                                                     MNP = [mut]
@@ -820,8 +830,17 @@ def faSAMparse(args, ref, file): # process SAM files
                                                 codonchecked.append(":".join(MNP))
                                                 MNP = [mut]
                                         else:
-                                            codonchecked.append(":".join(MNP))
-                                            MNP = [mut]
+                                            mutstartcodon = ((mutstart-1)//3)+1
+                                            MNPendcodon = ((MNPend-1)//3)+1
+                                            if 'insert' in MNP[-1]:
+                                                if '-' in MNP[-1].split('insert')[1]:
+                                                    MNPendcodon += 1
+                                            if mutstartcodon == MNPendcodon:
+                                                MNP.append(mut)
+                                            else:
+                                                codonchecked.append(":".join(MNP))
+                                                MNP = [mut]
+
                                     else:
                                         MNP.append(mut)
                                 else:
@@ -840,10 +859,7 @@ def faSAMparse(args, ref, file): # process SAM files
                                         cur_start_codon = ((int(mut[1:-1])-1)//3)+1
                                         cur_end_codon = ((int(mut[1:-1])-1)//3)+1
                                     if MNP:
-                                        if '(fs)' in ":".join(MNP):
-                                            codonchecked.append(":".join(MNP))
-                                            MNP = [mut]
-                                        elif cur_start_codon == last_codon:
+                                        if cur_start_codon == last_codon:
                                             MNP.append(mut)
                                         else:
                                             codonchecked.append(":".join(MNP))
@@ -857,46 +873,61 @@ def faSAMparse(args, ref, file): # process SAM files
                             for mut in codonchecked:
                                 if ":" in mut:
                                     if 'Del' in mut or 'insert' in mut:
-                                        start = 0
-                                        end = 0
-                                        ntshift = 0
-                                        split_MNP = mut.split(":")
-                                        
-                                        for x in range(0, len(split_MNP)):
-                                            if x == 0:
-                                                if 'Del' in split_MNP[x]:
-                                                    start = ((int(split_MNP[x].split('Del')[0].split('-')[0])-1)//3)+1
-                                                    ntshift -= int(split_MNP[x].split('Del')[0].split('-')[1]) - int(split_MNP[x].split('Del')[0].split('-')[0]) + 1
-                                                elif 'insert' in split_MNP[x]:
-                                                    start = ((int(split_MNP[x].split('-')[0])-1)//3)+1
-                                                    ntshift += int(len(split_MNP[x].split('(')[0].split('insert')[1]))
-                                                else:
-                                                    start = ((int(split_MNP[x][1:-1])-1)//3)+1
-                                            else:
-                                                if 'Del' in split_MNP[x]:
-                                                    end = ((int(split_MNP[x].split('Del')[0].split('-')[1])-1)//3)+1
-                                                    ntshift -= int(split_MNP[x].split('Del')[0].split('-')[1]) - int(split_MNP[x].split('Del')[0].split('-')[0]) + 1
-                                                elif 'insert' in split_MNP[x]:
-                                                    ntshift += int(len(split_MNP[x].split('(')[0].split('insert')[1]))
-                                                    if '-' in split_MNP[x].split('insert')[1]:
-                                                        end = ((int(split_MNP[x].split('-')[0])-1)//3)+2
+                                        fshift = 0
+                                        fs_count = 0
+                                        if '(fs)' in mut:
+                                            for single in mut.split(':'):
+                                                if '(fs)' in single:
+                                                    fs_count += 1
+                                                    if 'Del' in single:
+                                                        fshift -= int(single.split('Del')[0].split('-')[1]) - int(single.split('Del')[0].split('-')[0]) + 1
+                                                    elif 'insert' in single:
+                                                        fshift += int(len(single.split('(')[0].split('insert')[1]))
+                                        if ((fshift % 3) == 0):
+                                            start = 0
+                                            end = 0
+                                            ntshift = 0
+                                            split_MNP = mut.split(":")
+
+                                            for x in range(0, len(split_MNP)):
+                                                if x == 0:
+                                                    if 'Del' in split_MNP[x]:
+                                                        start = ((int(split_MNP[x].split('Del')[0].split('-')[0])-1)//3)+1
+                                                        ntshift -= int(split_MNP[x].split('Del')[0].split('-')[1]) - int(split_MNP[x].split('Del')[0].split('-')[0]) + 1
+                                                    elif 'insert' in split_MNP[x]:
+                                                        start = ((int(split_MNP[x].split('-')[0])-1)//3)+1
+                                                        ntshift += int(len(split_MNP[x].split('(')[0].split('insert')[1]))
                                                     else:
-                                                        end = ((int(split_MNP[x].split('-')[0])-1)//3)+1
+                                                        start = ((int(split_MNP[x][1:-1])-1)//3)+1
                                                 else:
-                                                    end = ((int(split_MNP[x][1:-1])-1)//3)+1
-                                        start_nt = ((start-1)*3)+1
-                                        end_nt = ((end-1)*3)+3
-                                        new_nt_seq = query_seq[start_nt-POS-offsets[start_nt-1]:end_nt-POS+1-offsets[start_nt-1]+ntshift]
-                                        if ntshift < 0:
-                                            while ntshift < 0:
-                                                new_nt_seq += '-'
-                                                ntshift += 1
-                                        new_aa_seq = ""
-                                        for i in range(0, (len(new_nt_seq)//3)):
-                                            new_aa_seq += AAcall(new_nt_seq[i*3:(i*3)+3])
-                                                
-                                        MNP_muts.append(ref[1][start_nt-1:end_nt]+str(((start-1)*3)+1)+'-'+str(((end-1)*3)+3)+new_nt_seq+ '(' + ref[3][1][start-1:end] + str(start) + '-' + str(end) + new_aa_seq +')')
-                                        
+                                                    if 'Del' in split_MNP[x]:
+                                                        end = ((int(split_MNP[x].split('Del')[0].split('-')[1])-1)//3)+1
+                                                        ntshift -= int(split_MNP[x].split('Del')[0].split('-')[1]) - int(split_MNP[x].split('Del')[0].split('-')[0]) + 1
+                                                    elif 'insert' in split_MNP[x]:
+                                                        ntshift += int(len(split_MNP[x].split('(')[0].split('insert')[1]))
+                                                        if '-' in split_MNP[x].split('insert')[1]:
+                                                            end = ((int(split_MNP[x].split('-')[0])-1)//3)+2
+                                                        else:
+                                                            end = ((int(split_MNP[x].split('-')[0])-1)//3)+1
+                                                    else:
+                                                        end = ((int(split_MNP[x][1:-1])-1)//3)+1
+                                            start_nt = ((start-1)*3)+1
+                                            end_nt = ((end-1)*3)+3
+                                            new_nt_seq = query_seq[start_nt-POS-offsets[start_nt-1]:end_nt-POS+1-offsets[start_nt-1]+ntshift]
+
+
+                                            if ntshift < 0:
+                                                while ntshift < 0:
+                                                    new_nt_seq += '-'
+                                                    ntshift += 1
+                                            new_aa_seq = ""
+                                            for i in range(0, (len(new_nt_seq)//3)):
+                                                new_aa_seq += AAcall(new_nt_seq[i*3:(i*3)+3])
+
+                                            MNP_muts.append(ref[1][start_nt-1:end_nt]+str(((start-1)*3)+1)+'-'+str(((end-1)*3)+3)+new_nt_seq+ '(' + ref[3][1][start-1:end] + str(start) + '-' + str(end) + new_aa_seq +')')
+                                        else:
+                                            MNP_muts.append(mut)
+
                                     else:
                                         split_MNP = mut.split(":")
                                         codon = ((int(split_MNP[0][1:-1])-1)//3)
@@ -920,13 +951,15 @@ def faSAMparse(args, ref, file): # process SAM files
                                 seq_species[mutations] += reads_count
                             except:
                                 seq_species[mutations] = reads_count
+                            if args.read == 1:
+                                reads_fh.write(f"{readID}\t{mutations}\n")
                         else:
                             try:
                                 seq_species[str(POS)+' '+mutations+' '+str(POS+q_pars_pos)] += reads_count
                             except:
                                 seq_species[str(POS)+' '+mutations+' '+str(POS+q_pars_pos)] = reads_count
-                        if args.read == 1:
-                            reads_fh.write(f"{readID}\t{mutations}\n")
+                            if args.read == 1:
+                                reads_fh.write(f"{readID}\t{str(POS)} {mutations} {str(POS+q_pars_pos)}\n")
 
                     if lastPOS < POS+q_pars_pos:
                         lastPOS = POS+q_pars_pos
@@ -970,7 +1003,7 @@ def faSAMparse(args, ref, file): # process SAM files
 
             seq_fh.close()
             # END SEQ OUT
-            print(f"End unqiue seq out for {samp}")
+            # print(f"End unqiue seq out for {samp}")
 
         if args.indel == 1 and len(indel_dict) > 0: # output indels, if there are any
             sorted_indels = sorted(indel_dict, key=indel_dict.__getitem__, reverse=True)
@@ -999,7 +1032,7 @@ def faSAMparse(args, ref, file): # process SAM files
                     indel_fh.write(indel_entry)
                 indel_fh.close()
             # END INDEL OUT
-            print(f"End indel out for {samp}")
+            # print(f"End indel out for {samp}")
 
         if args.nt_call == 1: # out put nt calls
             ntcall_lines = {'line' : {},
@@ -1143,7 +1176,7 @@ def faSAMparse(args, ref, file): # process SAM files
             if args.ntvar == 1:
                 ntcallv_fh.close()
             # END NT CALL OUT
-            print(f"End nt call out for {samp}")
+            # print(f"End nt call out for {samp}")
         if args.covar == 1: # output covariants
             testtrack = 0
             combinations = {}
@@ -1163,6 +1196,7 @@ def faSAMparse(args, ref, file): # process SAM files
             covar_fh.write(samp+"("+str(sam_read_count)+")\n")
             covar_fh.write("Co-Variants\tCount\tAbundance\n")
             sortedcombos = sorted(combinations, key=combinations.__getitem__, reverse=True)
+            # print(sortedcombos)
             for key in sortedcombos:
                 if (combinations[key] >= args.min_count):
                     if (combinations[key] / sam_read_count >= args.min_samp_abund) and args.wgs == 0:
@@ -1173,21 +1207,23 @@ def faSAMparse(args, ref, file): # process SAM files
                         splitcombos = key.split()
                         if len(splitcombos) == 1:
                             coveragePOS = ''
-                            for c in key:
+                            for c in key.strip('ATGC'):
                                 if c.isdigit():
                                     coveragePOS += c
                                 else:
                                     break
+                            # print(key)
+                            # print(coveragePOS)
                             coveragepercent = combinations[key] / coverage[int(coveragePOS)]
                         else:
                             startcovPOS = ''
-                            for c in splitcombos[0]:
+                            for c in splitcombos[0].strip('ATGC'):
                                 if c.isdigit():
                                     startcovPOS += c
                                 else:
                                     break
                             endcovPOS = ''
-                            for c in splitcombos[-1]:
+                            for c in splitcombos[-1].strip('ATGC'):
                                 if c.isdigit():
                                     endcovPOS += c
                                 else:
@@ -1202,10 +1238,8 @@ def faSAMparse(args, ref, file): # process SAM files
 
                     # \t{coveragepercent:.3f}
             covar_fh.close()
-
-
             # END COVAR OUT
-            print(f"End covar out for {samp}")
+            # print(f"End covar out for {samp}")
 
 def gbSAMparse(args, ref, file): # process SAM files
 
@@ -1258,10 +1292,10 @@ def gbSAMparse(args, ref, file): # process SAM files
                     sam_read_count += reads_count
                     sam_line_count += 1
 
-                    if sam_read_count % 5000 == 0:
-                        print(f"At read {sam_read_count} of {samp}")
-                    if sam_line_count % 5000 == 0:
-                        print(f"At line {sam_line_count} of {samp} SAM")
+                    # if sam_read_count % 5000 == 0:
+                        # print(f"At read {sam_read_count} of {samp}")
+                    # if sam_line_count % 5000 == 0:
+                        # print(f"At line {sam_line_count} of {samp} SAM")
 
                     CIGAR = splitline[5]
                     POS = int(splitline[3])
@@ -1641,7 +1675,7 @@ def gbSAMparse(args, ref, file): # process SAM files
 
             seq_fh.close()
             # END SEQ OUT
-            print(f"End unqiue seq out for {samp}")
+            # print(f"End unqiue seq out for {samp}")
 
         if args.indel == 1 and len(indel_dict) > 0: # output indels, if there are any
             sorted_indels = sorted(indel_dict, key=indel_dict.__getitem__, reverse=True)
@@ -1670,7 +1704,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                     indel_fh.write(indel_entry)
                 indel_fh.close()
             # END INDEL OUT
-            print(f"End indel out for {samp}")
+            # print(f"End indel out for {samp}")
 
         if args.nt_call == 1: # out put nt calls
             ntcall_lines = {'line' : {},
@@ -1741,6 +1775,11 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 pass
 
                 for POS in sorted_POS:
+                    try:
+                        total = coverage[POS]
+                    except:
+                        total = 0
+                        
                     try:
                         ntcall_lines['line'][POS]
                     except:
@@ -1915,7 +1954,7 @@ def gbSAMparse(args, ref, file): # process SAM files
             if args.ntvar == 1:
                 ntcallv_fh.close()
             # END NT CALL OUT
-            print(f"End nt call out for {samp}")
+            # print(f"End nt call out for {samp}")
         if args.covar == 1: # output covariants
             testtrack = 0
             combinations = {}
@@ -1977,7 +2016,7 @@ def gbSAMparse(args, ref, file): # process SAM files
 
 
             # END COVAR OUT
-            print(f"End covar out for {samp}")
+            # print(f"End covar out for {samp}")
 
 def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
 
