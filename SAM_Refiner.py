@@ -63,6 +63,12 @@ def arg_parser():
         help='Minimum abundance relative to total reads required for a position to be reported in the nt call output; must be non-negative and < 1, %% observed (.1 = 10%%), (default: .001)'
     )
     parser.add_argument(
+        '--ntcover',
+        type=int,
+        default=5,
+        help='Minimum coverage at a position to be reported in the nt call output. (default: 5)'
+    )
+    parser.add_argument(
         '--max_dist',
         type=int,
         default=40,
@@ -266,6 +272,10 @@ def arg_parser():
     elif args.ntabund >= 1:
         print(f"--ntabund must be non-negative and < 1, defaulting to .001")
         args.ntabund=0.001
+
+    if args.ntcover < 1:
+        print(f"--ntcover must be positive, defaulting to 5")
+        args.ntcover=5
 
     if args.max_dist < 0:
         print(f"--max_dist must be non-negative, defaulting to 40")
@@ -1055,7 +1065,7 @@ def faSAMparse(args, ref, file): # process SAM files
                         total = coverage[POS]
                     except:
                         total = 0
-                    if total >= (sam_read_count * args.ntabund):
+                    if total >= (sam_read_count * args.ntabund) and total >= args.ntcover:
                         # AAinfo = singletCodon(POS, ref[1][POS-1], ref)
                         POS_calls = {}
                         for key in nt_call_dict_dict[POS]:
@@ -1128,7 +1138,7 @@ def faSAMparse(args, ref, file): # process SAM files
                         total = coverage[POS] # sum(nt_call_dict_dict[POS].values())
                     except:
                         total = 0
-                    if total >= (sam_read_count * args.ntabund):
+                    if total >= (sam_read_count * args.ntabund) and total >= args.ntcover:
                         POS_calls = {}
                         for key in nt_call_dict_dict[POS]:
                             POS_calls[key] = nt_call_dict_dict[POS][key]
@@ -1646,7 +1656,6 @@ def gbSAMparse(args, ref, file): # process SAM files
     sam_fh.close()
     # END SAM LINES
     print(f"End SAM parse for {samp}")
-    # print(coverage)
 
     if sam_read_count == 0:
         print(f"No Reads for {samp}")
@@ -1739,7 +1748,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                         total = coverage[POS]
                     except:
                         total = 0
-                    if total >= (sam_read_count * args.ntabund):
+                    if total >= (sam_read_count * args.ntabund) and total >= args.ntcover:
                         # AAinfo = singletCodon(POS, ref[1][POS-1], ref)
                         POS_calls = {}
                         for key in nt_call_dict_dict[POS]:
@@ -1906,7 +1915,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                         total = coverage[POS] # sum(nt_call_dict_dict[POS].values())
                     except:
                         total = 0
-                    if total >= (sam_read_count * args.ntabund):
+                    if total >= (sam_read_count * args.ntabund) and total >= args.ntcover:
                         POS_calls = {}
                         for key in nt_call_dict_dict[POS]:
                             POS_calls[key] = nt_call_dict_dict[POS][key]
