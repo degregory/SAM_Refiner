@@ -312,11 +312,11 @@ def arg_parser():
     return(args)
 
 def get_ref(args): # get the reference ID and sequence from the FASTA file.  Will only get the first.
-"""
-From the reference provide, attempts to obtain reference ID and NT sequence, and AA sequence(s) if AAreport is enabled.
-For fasta formatted files, only the first entry is parsed.
-For genbank formatted files, CDS AA sequences will be pulled along with their gene ID
-"""
+    """
+    From the reference provide, attempts to obtain reference ID and NT sequence, and AA sequence(s) if AAreport is enabled.
+    For fasta formatted files, only the first entry is parsed.
+    For genbank formatted files, CDS AA sequences will be pulled along with their gene ID
+    """
     n=0
     refID = ''
     reftype = ''
