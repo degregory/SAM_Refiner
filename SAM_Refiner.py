@@ -9,6 +9,15 @@ import itertools
 import time
 from multiprocessing import Process, Pool
 from pathlib import Path
+"""
+To Do:
+Improve MNP processing for gb references
+Improve nt call and nt var processing and file writing
+Maybe add ins to nt call output
+Clean up / polish / add comments
+add --verbose --quiet options
+"""
+
 
 
 # process for collecing command line arguments
@@ -150,13 +159,6 @@ def arg_parser():
         choices=[0, 1],
         help='Enable/Disable (1/0) collection step, default enabled (--collect 1)'
     )
-    # parser.add_argument(
-        # '--sams',
-        # type=int,
-        # default=1,
-        # choices=[0, 1],
-        # help='Enable/Disable (1/0) sam processing, default enabled (--sams 1)'
-    # )
     parser.add_argument(
         '--read',
         type=int,
@@ -243,11 +245,6 @@ def arg_parser():
             args.chim_rm = 0
             print('WGS mode enabled, disabling chimera removal methods')
 
-    # if args.sams == 1:
-        # if not args.ref:
-            # print('Must have a reference(-r, --referecne) to parse sams, skipping sam parsing')
-            # args.sams = 0
-
     if args.min_count < 1:
         print(f"--min_count must be 1 or greter, setting to 1")
         args.min_count=1
@@ -315,7 +312,11 @@ def arg_parser():
     return(args)
 
 def get_ref(args): # get the reference ID and sequence from the FASTA file.  Will only get the first.
-
+"""
+From the reference provide, attempts to obtain reference ID and NT sequence, and AA sequence(s) if AAreport is enabled.
+For fasta formatted files, only the first entry is parsed.
+For genbank formatted files, CDS AA sequences will be pulled along with their gene ID
+"""
     n=0
     refID = ''
     reftype = ''
@@ -558,8 +559,6 @@ def faSAMparse(args, ref, file): # process SAM files
     seq_species = {}
     sam_read_count = 0
     sam_line_count = 0
-    firstPOS = 0
-    lastPOS = 0
     coverage = {}
     if args.read == 1:
         readID = ''
@@ -575,12 +574,15 @@ def faSAMparse(args, ref, file): # process SAM files
                     reads_count=1
                     if args.use_count == 1: # get the unique sequence counts
                         if '-' in splitline[0] and '=' in splitline[0]:
-                            eq_split = splitline[0].split('=')
-                            dash_split = splitline[0].split('-')
-                            if len(eq_split[-1]) > len(dash_split[-1]):
-                                reads_count=int(dash_split[-1])
-                            else:
-                                reads_count=int(eq_split[-1])
+                            try:
+                                eq_split = splitline[0].split('=')
+                                dash_split = splitline[0].split('-')
+                                if len(eq_split[-1]) > len(dash_split[-1]):
+                                    reads_count=int(dash_split[-1])
+                                else:
+                                    reads_count=int(eq_split[-1])
+                            except:
+                                pass
 
                         elif '-' in splitline[0]:
                             try:
@@ -595,7 +597,6 @@ def faSAMparse(args, ref, file): # process SAM files
                             except:
                                 pass
 
-
                     sam_read_count += reads_count
                     sam_line_count += 1
 
@@ -606,10 +607,6 @@ def faSAMparse(args, ref, file): # process SAM files
 
                     CIGAR = splitline[5]
                     POS = int(splitline[3])
-                    if firstPOS == 0:
-                        firstPOS = POS
-                    elif POS < firstPOS:
-                        firstPOS = POS
 
                     readID = splitline[0]
                     query_seq = splitline[9].upper()
@@ -626,7 +623,6 @@ def faSAMparse(args, ref, file): # process SAM files
                             if C == 'S':
                                 query_pos = query_pos + run_length
                             # if C == 'H':
-
 
                             if C == 'I':
                                 if query_pos > 0:
@@ -708,9 +704,9 @@ def faSAMparse(args, ref, file): # process SAM files
                                 elif args.AAreport == 1 and (run_length % 3 == 0):
                                     newAArefpos = (q_pars_pos+POS-1) // 3
                                     if run_length // 3 == 1:
-                                        
+
                                         delstring = delstring + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)] + str(newAArefpos+1) + '-' #  + str(newAArefpos+run_length//3)
-                                    
+
                                     else:
                                         delstring = delstring + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)] + str(newAArefpos+1) + '-' + str(newAArefpos+run_length//3)
                                         for i in range(0, run_length//3):
@@ -971,8 +967,6 @@ def faSAMparse(args, ref, file): # process SAM files
                             if args.read == 1:
                                 reads_fh.write(f"{readID}\t{str(POS)} {mutations} {str(POS+q_pars_pos)}\n")
 
-                    if lastPOS < POS+q_pars_pos:
-                        lastPOS = POS+q_pars_pos
                     for i in range(POS, POS+q_pars_pos): # update coverage
                         try:
                             coverage[i] += reads_count
@@ -1148,23 +1142,6 @@ def faSAMparse(args, ref, file): # process SAM files
                         ntcall_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
                         ntcall_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[0]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[0]]/total):.3f}")
 
-                        # if sorted_calls[0] != ref[1][POS-1]:
-                            # if args.ntvar == 1:
-                                # ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1])
-                                # ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
-                                # ntcallv_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[0]]))
-                                # ntcallv_fh.write(f"\t{(nt_call_dict_dict[POS][sorted_calls[0]]/total):.3f}")
-                            # if (nt_call_dict_dict[POS][sorted_calls[1]] > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[1]] / total > args.min_samp_abund):
-                                # ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
-                                # if sorted_calls[1] != ref[1][POS-1] and args.ntvar == 1:
-                                    # ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
-                                # if (nt_call_dict_dict[POS][sorted_calls[2]] > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[2]] /total > args.min_samp_abund):
-                                    # ntcall_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
-                                    # if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
-                                        # ntcallv_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
-                            # if args.ntvar == 1:
-                                # ntcallv_fh.write("\n")
-
                         if (nt_call_dict_dict[POS][sorted_calls[1]] >= args.min_count) and (nt_call_dict_dict[POS][sorted_calls[1]] / total) >= args.min_samp_abund:
                             if args.ntvar == 1:
                                 ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1])
@@ -1260,8 +1237,6 @@ def gbSAMparse(args, ref, file): # process SAM files
     seq_species = {}
     sam_read_count = 0
     sam_line_count = 0
-    firstPOS = 0
-    lastPOS = 0
     coverage = {}
     if args.read == 1:
         readID = ''
@@ -1309,10 +1284,6 @@ def gbSAMparse(args, ref, file): # process SAM files
 
                     CIGAR = splitline[5]
                     POS = int(splitline[3])
-                    if firstPOS == 0:
-                        firstPOS = POS
-                    elif POS < firstPOS:
-                        firstPOS = POS
 
                     readID = splitline[0]
                     query_seq = splitline[9].upper()
@@ -1623,10 +1594,8 @@ def gbSAMparse(args, ref, file): # process SAM files
                                         newmutstring += "(" + orf + "_" + mutorfs[orf]['mutstrings'][mut] + ")"
                                     except:
                                         pass
-
-
-
                                 codonchecked.append(newmutstring)
+
                             mutations = codonchecked
 
                         mutations = " ".join(mutations)
@@ -1644,8 +1613,6 @@ def gbSAMparse(args, ref, file): # process SAM files
                         if args.read == 1:
                             reads_fh.write(f"{readID}\t{mutations}\n")
 
-                    if lastPOS < POS+q_pars_pos:
-                        lastPOS = POS+q_pars_pos
                     for i in range(POS, POS+q_pars_pos): # update coverage
                         try:
                             coverage[i] += reads_count
@@ -1788,7 +1755,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                         total = coverage[POS]
                     except:
                         total = 0
-                        
+
                     try:
                         ntcall_lines['line'][POS]
                     except:
