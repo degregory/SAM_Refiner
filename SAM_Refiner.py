@@ -1501,7 +1501,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                                     if (orf+':fs/') in mut or (orf+':Star') in mut:
                                         if curMNP:
                                             MNPs.append(curMNP)
-                                        MNPs.append(mut)
+                                        MNPs.append([[mut, -1]])
                                         curMNP = ''
                                         last_codon = -1
                                         continue
@@ -1643,7 +1643,6 @@ def gbSAMparse(args, ref, file): # process SAM files
                                                 else:
                                                     mutorfs[orf][curPM[0]] = f"({orf}:{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}-{endcodonpos}{mutAAseq}))"
 
-
                                         else:
                                             curPM = entry[0][0]
                                             if 'Del' in  curPM or 'insert' in curPM:
@@ -1655,7 +1654,6 @@ def gbSAMparse(args, ref, file): # process SAM files
                                                 AAinfo = singletCodon(ORFPos, curPM[-1], (ref[3][orf]['nts']))
                                                 PM = '(' + orf + ":" + curPM[0] + str(ORFPos) + curPM[-1] + "(" + ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+'))'
                                                 mutorfs[orf][curPM] = PM
-                            # print(mutorfs)
                             MNPchecked = []
                             for mut in mutations:
                                 if 'Del' or 'insert' in mut:
