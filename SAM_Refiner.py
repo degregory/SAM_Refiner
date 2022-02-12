@@ -11,14 +11,13 @@ from multiprocessing import Process, Pool
 from pathlib import Path
 """
 To Do:
-Improve MNP processing for gb references
+Improve MNP processing for frameshifts
+add AA centered output for gb reference 
 Improve nt call and nt var processing and file writing
 Maybe add ins to nt call output
 Clean up / polish / add comments
 add --verbose --quiet options
 """
-
-
 
 # process for collecing command line arguments
 def arg_parser():
@@ -311,12 +310,12 @@ def arg_parser():
 
     return(args)
 
+"""
+From the reference provide, attempts to obtain reference ID and NT sequence, and AA sequence(s) if AAreport is enabled.
+For fasta formatted files, only the first entry is parsed.
+For genbank formatted files, CDS AA sequences will be pulled along with their gene ID
+"""
 def get_ref(args): # get the reference ID and sequence from the FASTA file.  Will only get the first.
-    """
-    From the reference provide, attempts to obtain reference ID and NT sequence, and AA sequence(s) if AAreport is enabled.
-    For fasta formatted files, only the first entry is parsed.
-    For genbank formatted files, CDS AA sequences will be pulled along with their gene ID
-    """
     n=0
     refID = ''
     reftype = ''
@@ -524,21 +523,21 @@ def AAcall(codon): # amino acid / codon dictionary to return encoded AAs
 
     return(AA)
 
-def singletCodon(ntPOS, nt, ref): # process to return the AA and protein seq. position based on the reference and provided nt seq position and nt
-    AAPOS = (ntPOS-1)//3
-    AAmod = (ntPOS-1)%3
+def singletCodon(ntPos, nt, ref): # process to return the AA and protein seq. position based on the reference and provided nt seq position and nt
+    AAPos = (ntPos-1)//3
+    AAmod = (ntPos-1)%3
     codon = ""
     try:
         if AAmod == 0:
-            codon = nt+ref[ntPOS]+ref[ntPOS+1]
+            codon = nt+ref[ntPos]+ref[ntPos+1]
         elif AAmod == 1:
-            codon = ref[ntPOS-2]+nt+ref[ntPOS]
+            codon = ref[ntPos-2]+nt+ref[ntPos]
         elif AAmod == 2:
-            codon = ref[ntPOS-3]+ref[ntPOS-2]+nt
+            codon = ref[ntPos-3]+ref[ntPos-2]+nt
     except:
         codon = "XXX"
 
-    return(AAPOS+1, AAcall(codon))
+    return(AAPos+1, AAcall(codon))
 
 def getCombos(qlist, clen): # returns combinations of single polymorphisms in a sequence
     combos = []
@@ -606,12 +605,11 @@ def faSAMparse(args, ref, file): # process SAM files
                         # print(f"At line {sam_line_count} of {samp} SAM")
 
                     CIGAR = splitline[5]
-                    POS = int(splitline[3])
+                    Pos = int(splitline[3])
 
                     readID = splitline[0]
                     query_seq = splitline[9].upper()
                     run_length = 0
-                    query_seq_parsed = ''
                     query_pos = 0
                     q_pars_pos = 0
                     mutations = []
@@ -627,22 +625,22 @@ def faSAMparse(args, ref, file): # process SAM files
                             if C == 'I':
                                 if query_pos > 0:
                                     # add insertion to dict
-                                    iPOS = q_pars_pos+POS
+                                    iPos = q_pars_pos+Pos
 
                                     running_offset += run_length
 
                                     iSeq = query_seq[query_pos: query_pos+run_length]
-                                    istring = str(iPOS)+'-insert'+iSeq
+                                    istring = str(iPos)+'-insert'+iSeq
 
                                     if args.AAreport == 1 and (run_length % 3 == 0):
 
                                         iProt = ''
-                                        if iPOS % 3 == 1:
+                                        if iPos % 3 == 1:
                                             for x in range(0, (run_length//3)):
                                                 AA = AAcall(iSeq[x*3]+iSeq[x*3+1]+iSeq[x*3+2])
                                                 iProt = iProt + AA
-                                            istring = istring + '(' + str(((iPOS-1)//3)+1) + iProt + ')'
-                                        elif iPOS % 3 == 2:
+                                            istring = istring + '(' + str(((iPos-1)//3)+1) + iProt + ')'
+                                        elif iPos % 3 == 2:
                                             if query_pos > 0:
                                                 ipSeq = query_seq[query_pos-1:query_pos+run_length+5]
                                             else:
@@ -650,7 +648,7 @@ def faSAMparse(args, ref, file): # process SAM files
                                             for x in range(0, (run_length//3)+2):
                                                 AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
                                                 iProt = iProt + AA
-                                            istring = istring + '(' + ref[3][1][(iPOS-1)//3:((iPOS-1)//3)+2] + str(((iPOS-1)//3)+1) + '-' + str(((iPOS-1)//3)+2) + iProt + ')'
+                                            istring = istring + '(' + ref[3][1][(iPos-1)//3:((iPos-1)//3)+2] + str(((iPos-1)//3)+1) + '-' + str(((iPos-1)//3)+2) + iProt + ')'
                                         else:
                                             if query_pos > 1:
                                                 ipSeq = query_seq[query_pos-2:query_pos+run_length+4]
@@ -659,7 +657,7 @@ def faSAMparse(args, ref, file): # process SAM files
                                             for x in range(0, (run_length//3)+2):
                                                 AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
                                                 iProt = iProt + AA
-                                            istring = istring + '(' + ref[3][1][(iPOS-1)//3:((iPOS-1)//3)+2] + str(((iPOS-1)//3)+1) + '-' + str(((iPOS-1)//3)+2) + iProt + ')'
+                                            istring = istring + '(' + ref[3][1][(iPos-1)//3:((iPos-1)//3)+2] + str(((iPos-1)//3)+1) + '-' + str(((iPos-1)//3)+2) + iProt + ')'
                                     elif args.AAreport == 1:
                                         istring = istring+'(fs)'
 
@@ -676,33 +674,34 @@ def faSAMparse(args, ref, file): # process SAM files
                                     query_pos = query_pos + run_length
 
                             elif C == 'D':
-                                for X in range(0, run_length):
-                                    query_seq_parsed += '-'
 
-                                delstring = str(q_pars_pos+POS)+'-'+str(q_pars_pos+POS+run_length-1)+'Del'
+                                delPos = q_pars_pos+Pos
+                                delnts = ref[1][delPos-1:delPos+run_length-1]
+                                delstring = delnts+str(delPos)+'-'+str(delPos+run_length-1)+'Del'
+                                # delstring = delnts + str(q_pars_pos+Pos)+'-'+str(q_pars_pos+Pos+run_length-1)+'Del'
 
                                 running_offset -= run_length
-                                for i in range(q_pars_pos+POS+1, q_pars_pos+POS+1+run_length):
+                                for i in range(delPos+1, delPos+1+run_length):
                                     offsets[i] = running_offset
 
 
-                                if args.AAreport == 1 and (run_length % 3 == 0) and not ((q_pars_pos+POS) % 3 == 1 ):
-                                    if (q_pars_pos+POS) % 3 == 2:
+                                if args.AAreport == 1 and (run_length % 3 == 0) and not ((delPos) % 3 == 1 ):
+                                    if (delPos) % 3 == 2:
                                         newcodon = query_seq[query_pos-1:query_pos+2]
-                                        newAArefpos = (q_pars_pos+POS-1) // 3
+                                        newAArefpos = (delPos-1) // 3
                                         delstring = delstring + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)+1] + str(newAArefpos+1) + '-' + str(newAArefpos+1+run_length//3) + AAcall(newcodon)
                                         for i in range(0, run_length//3):
                                             delstring = delstring + '-'
                                         delstring = delstring + ')'
                                     else:
                                         newcodon = query_seq[query_pos-2:query_pos+1]
-                                        newAArefpos = (q_pars_pos+POS-1) // 3
+                                        newAArefpos = (delPos-1) // 3
                                         delstring = delstring + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)+1] + str(newAArefpos+1) + '-' + str(newAArefpos+1+run_length//3) + AAcall(newcodon)
                                         for i in range(0, run_length//3):
                                             delstring = delstring + '-'
                                         delstring = delstring + ')'
                                 elif args.AAreport == 1 and (run_length % 3 == 0):
-                                    newAArefpos = (q_pars_pos+POS-1) // 3
+                                    newAArefpos = (delPos-1) // 3
                                     if run_length // 3 == 1:
 
                                         delstring = delstring + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)] + str(newAArefpos+1) + '-' #  + str(newAArefpos+run_length//3)
@@ -718,7 +717,7 @@ def faSAMparse(args, ref, file): # process SAM files
                                 mutations.append(delstring)
 
                                 if args.nt_call == 1:
-                                    for N in range(q_pars_pos+POS, q_pars_pos+POS+int(run_length)):
+                                    for N in range(delPos, delPos+int(run_length)):
                                         try:
                                             nt_call_dict_dict[N]
                                         except:
@@ -743,32 +742,32 @@ def faSAMparse(args, ref, file): # process SAM files
 
                             elif C == 'M':
                                 offset = q_pars_pos-query_pos
-                                refPOS = POS+offset
+                                refPos = Pos+offset
 
-                                for ntPOS in range(query_pos, query_pos+run_length):
-                                    offsets[refPOS+ntPOS+1] = running_offset
-                                    if query_seq[ntPOS] == 'N':
+                                for ntPos in range(query_pos, query_pos+run_length):
+                                    offsets[refPos+ntPos+1] = running_offset
+                                    if query_seq[ntPos] == 'N':
                                         if args.AAreport == 0 or args.AAcodonasMNP == 0:
-                                            mutations.append(ref[1][refPOS+ntPOS-1]+str(refPOS+ntPOS)+query_seq[ntPOS])
-                                    if query_seq[ntPOS] == 'A' or query_seq[ntPOS] == 'T' or query_seq[ntPOS] == 'C' or query_seq[ntPOS] == 'G' or query_seq[ntPOS] == '-':
-                                        if query_seq[ntPOS] != ref[1][refPOS+ntPOS-1]:
+                                            mutations.append(ref[1][refPos+ntPos-1]+str(refPos+ntPos)+query_seq[ntPos])
+                                    if query_seq[ntPos] == 'A' or query_seq[ntPos] == 'T' or query_seq[ntPos] == 'C' or query_seq[ntPos] == 'G' or query_seq[ntPos] == '-':
+                                        if query_seq[ntPos] != ref[1][refPos+ntPos-1]:
                                             if args.AAreport == 1 and args.AAcodonasMNP == 0:
-                                                AAinfo = singletCodon(refPOS+ntPOS, query_seq[ntPOS], ref[1])
-                                                mutations.append(ref[1][refPOS+ntPOS-1]+str(refPOS+ntPOS)+query_seq[ntPOS]+'('+ref[3][1][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')')
+                                                AAinfo = singletCodon(refPos+ntPos, query_seq[ntPos], ref[1])
+                                                mutations.append(ref[1][refPos+ntPos-1]+str(refPos+ntPos)+query_seq[ntPos]+'('+ref[3][1][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')')
                                             else:
-                                                mutations.append(ref[1][refPOS+ntPOS-1]+str(refPOS+ntPOS)+query_seq[ntPOS])
+                                                mutations.append(ref[1][refPos+ntPos-1]+str(refPos+ntPos)+query_seq[ntPos])
                                         if args.nt_call == 1:
                                             try:
-                                                nt_call_dict_dict[refPOS+ntPOS]
+                                                nt_call_dict_dict[refPos+ntPos]
                                             except:
-                                                nt_call_dict_dict[refPOS+ntPOS] = {'A' : 0,
+                                                nt_call_dict_dict[refPos+ntPos] = {'A' : 0,
                                                                                    'T' : 0,
                                                                                    'C' : 0,
                                                                                    'G' : 0,
                                                                                    '-' : 0}
-                                                nt_call_dict_dict[refPOS+ntPOS][query_seq[ntPOS]] = reads_count
+                                                nt_call_dict_dict[refPos+ntPos][query_seq[ntPos]] = reads_count
                                             else:
-                                                nt_call_dict_dict[refPOS+ntPOS][query_seq[ntPOS]] += reads_count
+                                                nt_call_dict_dict[refPos+ntPos][query_seq[ntPos]] += reads_count
 
 
                                 q_pars_pos = q_pars_pos + run_length
@@ -791,164 +790,159 @@ def faSAMparse(args, ref, file): # process SAM files
                                 seq_species['Reference'] = reads_count
                         else:
                             try:
-                                seq_species[str(POS)+' Ref '+str(POS+q_pars_pos)] += reads_count
+                                seq_species[str(Pos)+' Ref '+str(Pos+q_pars_pos)] += reads_count
                             except:
-                                seq_species[str(POS)+' Ref '+str(POS+q_pars_pos)] = reads_count
+                                seq_species[str(Pos)+' Ref '+str(Pos+q_pars_pos)] = reads_count
                         if args.read == 1:
                             reads_fh.write(f"{readID}\tReference\n")
 
                     else: # record variants and counts
                         if args.AAreport == 1 and args.AAcodonasMNP == 1:
+                            MNPs = []
+                            curMNP = ''
                             last_codon = -1
-                            codonchecked = []
-                            MNP = []
+                            fshift = 0
                             for mut in mutations:
-                                if '(fs)' in mut:
-                                    if MNP:
-                                        mutstart = 0
-                                        if 'Del' in mut:
-                                            mutstart = int(mut.split('Del')[0].split('-')[0])
-                                        elif 'insert' in mut:
-                                            mutstart = int((mut.split('(')[0].split('-')[0]))
-
-                                        MNPend = 0
-                                        if 'Del' in MNP[-1]:
-                                            MNPend = int(MNP[-1].split('Del')[0].split('-')[1])
-                                        elif 'insert' in MNP[-1]:
-                                            MNPend = int((MNP[-1].split('(')[0].split('-')[0]))
-                                        else:
-                                            MNPend = int(MNP[-1][1:-1])
-
-                                        if '(fs)' in MNP[-1]:
-                                            if mutstart - MNPend < 10:
-                                                ntshift = 0
-                                                for single in [MNP[-1], mut]:
-                                                    if 'Del' in single:
-                                                        ntshift -= int(single.split('Del')[0].split('-')[1]) - int(single.split('Del')[0].split('-')[0]) + 1
-                                                    elif 'insert' in single:
-                                                        ntshift += int(len(single.split('(')[0].split('insert')[1]))
-                                                if ntshift % 3 == 0:
-                                                    MNP.append(mut)
-                                                else:
-                                                    codonchecked.append(":".join(MNP))
-                                                    MNP = [mut]
-                                            else:
-                                                codonchecked.append(":".join(MNP))
-                                                MNP = [mut]
-                                        else:
-                                            mutstartcodon = ((mutstart-1)//3)+1
-                                            MNPendcodon = ((MNPend-1)//3)+1
-                                            if 'insert' in MNP[-1]:
-                                                if '-' in MNP[-1].split('insert')[1]:
-                                                    MNPendcodon += 1
-                                            if mutstartcodon == MNPendcodon:
-                                                MNP.append(mut)
-                                            else:
-                                                codonchecked.append(":".join(MNP))
-                                                MNP = [mut]
-
-                                    else:
-                                        MNP.append(mut)
+                                if '-' in mut:
+                                    startPos = int(mut.split('-')[0].strip('ATCGN'))
                                 else:
-                                    cur_start_codon = 0
-                                    cur_end_codon = 0
-                                    if 'Del' in mut:
-                                        cur_start_codon = ((int(mut.split('Del')[0].split('-')[0])-1)//3)+1
-                                        cur_end_codon = ((int(mut.split('Del')[0].split('-')[1])-1)//3)+1
-                                    elif 'insert' in mut:
-                                        cur_start_codon = ((int(mut.split('-')[0])-1)//3)+1
-                                        if '-' in mut.split('insert')[1]:
-                                            cur_end_codon = ((int(mut.split('-')[0])-1)//3)+2
-                                        else:
-                                            cur_end_codon = ((int(mut.split('-')[0])-1)//3)+1
-                                    else:
-                                        cur_start_codon = ((int(mut[1:-1])-1)//3)+1
-                                        cur_end_codon = ((int(mut[1:-1])-1)//3)+1
-                                    if MNP:
-                                        if cur_start_codon == last_codon:
-                                            MNP.append(mut)
-                                        else:
-                                            codonchecked.append(":".join(MNP))
-                                            MNP = [mut]
-                                    else:
-                                        MNP.append(mut)
-                                    last_codon = cur_end_codon
-                            if MNP:
-                                codonchecked.append(":".join(MNP))
-                            MNP_muts = []
-                            for mut in codonchecked:
-                                if ":" in mut:
-                                    if 'Del' in mut or 'insert' in mut:
-                                        fshift = 0
-                                        fs_count = 0
-                                        if '(fs)' in mut:
-                                            for single in mut.split(':'):
-                                                if '(fs)' in single:
-                                                    fs_count += 1
-                                                    if 'Del' in single:
-                                                        fshift -= int(single.split('Del')[0].split('-')[1]) - int(single.split('Del')[0].split('-')[0]) + 1
-                                                    elif 'insert' in single:
-                                                        fshift += int(len(single.split('(')[0].split('insert')[1]))
-                                        if ((fshift % 3) == 0):
-                                            start = 0
-                                            end = 0
-                                            ntshift = 0
-                                            split_MNP = mut.split(":")
+                                    startPos = int(mut.split('(')[0].strip('ATCGN'))
+                                endPos = startPos
+                                if 'Del' in mut:
+                                    endPos = int(mut.split('Del')[0].split('-')[1])
 
-                                            for x in range(0, len(split_MNP)):
-                                                if x == 0:
-                                                    if 'Del' in split_MNP[x]:
-                                                        start = ((int(split_MNP[x].split('Del')[0].split('-')[0])-1)//3)+1
-                                                        ntshift -= int(split_MNP[x].split('Del')[0].split('-')[1]) - int(split_MNP[x].split('Del')[0].split('-')[0]) + 1
-                                                    elif 'insert' in split_MNP[x]:
-                                                        start = ((int(split_MNP[x].split('-')[0])-1)//3)+1
-                                                        ntshift += int(len(split_MNP[x].split('(')[0].split('insert')[1]))
+                                startcodon = (((startPos)-1)//3)+1
+                                endcodon = ((endPos-1)//3)+1
+                                if curMNP:
+                                    if 'fs' in mut:
+                                        mutshift = 0
+                                        if 'insert' in mut:
+                                            mutshift += len(mut.split('(')[0].split('insert')[1])
+                                        else:
+                                            mutshift -= len(mut.split('-')[0].strip('0123456789'))
+
+                                        if (fshift % 3) == 0:
+                                            if startcodon == last_codon:
+                                                curMNP.append([mut, startPos])
+                                                fshift += mutshift
+                                            else:
+                                                MNPs.append(curMNP)
+                                                curMNP = [[mut, startPos]]
+                                                fshift = mutshift
+
+                                        else:
+                                            if startcodon < last_codon + 5:
+                                                curMNP.append([mut, startPos])
+                                                fshift += mutshift
+                                            else:
+                                                ## todo splitfsMNP() make process
+                                                fsfreeMNP = []
+                                                for SNP in curMNP:
+                                                    if 'fs' in SNP:
+                                                        if fsfreeMNP:
+                                                            MNPs.append(fsfreeMNP)
+                                                            fsfreeMNP = []
+                                                        MNPs.append([SNP])
                                                     else:
-                                                        start = ((int(split_MNP[x][1:-1])-1)//3)+1
-                                                else:
-                                                    if 'Del' in split_MNP[x]:
-                                                        end = ((int(split_MNP[x].split('Del')[0].split('-')[1])-1)//3)+1
-                                                        ntshift -= int(split_MNP[x].split('Del')[0].split('-')[1]) - int(split_MNP[x].split('Del')[0].split('-')[0]) + 1
-                                                    elif 'insert' in split_MNP[x]:
-                                                        ntshift += int(len(split_MNP[x].split('(')[0].split('insert')[1]))
-                                                        if '-' in split_MNP[x].split('insert')[1]:
-                                                            end = ((int(split_MNP[x].split('-')[0])-1)//3)+2
-                                                        else:
-                                                            end = ((int(split_MNP[x].split('-')[0])-1)//3)+1
-                                                    else:
-                                                        end = ((int(split_MNP[x][1:-1])-1)//3)+1
-                                            start_nt = ((start-1)*3)+1
-                                            end_nt = ((end-1)*3)+3
-                                            new_nt_seq = query_seq[start_nt-POS-offsets[start_nt-1]:end_nt-POS+1-offsets[start_nt-1]+ntshift]
-
-
-                                            if ntshift < 0:
-                                                while ntshift < 0:
-                                                    new_nt_seq += '-'
-                                                    ntshift += 1
-                                            new_aa_seq = ""
-                                            for i in range(0, (len(new_nt_seq)//3)):
-                                                new_aa_seq += AAcall(new_nt_seq[i*3:(i*3)+3])
-
-                                            MNP_muts.append(ref[1][start_nt-1:end_nt]+str(((start-1)*3)+1)+'-'+str(((end-1)*3)+3)+new_nt_seq+ '(' + ref[3][1][start-1:end] + str(start) + '-' + str(end) + new_aa_seq +')')
-                                        else:
-                                            MNP_muts.append(mut)
-
+                                                        fsfreeMNP.append(SNP)
+                                                if fsfreeMNP:
+                                                    MNPs.append(fsfreeMNP)
+                                                curMNP = [[mut, startPos]]
+                                                fshift = mutshift
                                     else:
-                                        split_MNP = mut.split(":")
-                                        codon = ((int(split_MNP[0][1:-1])-1)//3)
-                                        old_triplet = ref[1][(codon*3):(codon*3)+3]
-                                        new_triplet = [old_triplet[0], old_triplet[1], old_triplet[2]] # ['r', 'r', 'r']
-                                        for PM in split_MNP:
-                                            new_triplet[((int(PM[1:-1])-1)%3)] = PM[-1]
-                                        MNP =  old_triplet + str((codon*3)+1) + "".join(new_triplet) + "(" + ref[3][1][codon] + str(codon+1) + AAcall("".join(new_triplet)) + ")"
-                                        MNP_muts.append(MNP)
-                                elif not 'Del' in mut and not 'insert' in mut:
-                                    AAinfo = singletCodon(int(mut[1:-1]), mut[-1], ref[1])
-                                    MNP_muts.append(mut+'('+ref[3][1][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')')
+                                        if startcodon == last_codon:
+                                            curMNP.append([mut, startPos])
+                                        else:
+                                            if (fshift % 3) == 0:
+                                                MNPs.append(curMNP)
+                                            else:
+                                                ## splitfsMNP() make process
+                                                fsfreeMNP = []
+                                                for SNP in curMNP:
+                                                    if 'fs' in SNP:
+                                                        if fsfreeMNP:
+                                                            MNPs.append(fsfreeMNP)
+                                                            fsfreeMNP = []
+                                                        MNPs.append([SNP])
+                                                    else:
+                                                        fsfreeMNP.append(SNP)
+                                                if fsfreeMNP:
+                                                    MNPs.append(fsfreeMNP)
+                                            curMNP = [[mut, startPos]]
+                                            fshift = 0
                                 else:
-                                    MNP_muts.append(mut)
-                            mutations = MNP_muts
+                                    curMNP = [[mut, startPos]]
+                                last_codon = endcodon
+                            if curMNP:
+                                MNPs.append(curMNP)
+
+                            if MNPs:
+                                combinedmut = []
+                                for entry in MNPs:
+                                    if len(entry) > 1:
+                                        MNPreport = ''
+                                        mutntseq = ''
+                                        orfstartpos = entry[0][1]
+                                        orfendpos = entry[-1][1]
+                                        if 'Del' in entry[-1][0]:
+                                            orfendpos += len(entry[-1][0].split('-')[0].strip('0123456789')) - 1
+
+                                        for i in range(0, len(entry)):
+                                            curPM = entry[i][0]
+                                            if i > 0:
+                                                if entry[i][1] > entry[i-1][1]:
+                                                    if 'insert' in entry[i-1][0]:
+                                                        mutntseq += ref[1][entry[i-1][1]-1:entry[i][1]-1]
+                                                    elif 'Del' in entry[i-1][0]:
+                                                        mutntseq += ref[1][entry[i-1][1]+len(entry[i-1][0].split('-')[0].strip('0123456789')):entry[i][1]-1]
+                                                    else:
+                                                        mutntseq += ref[1][entry[i-1][1]:entry[i][1]-1]
+                                            if 'insert' in curPM:
+                                                mutntseq += curPM.split('(')[0].split('insert')[1]
+                                            elif 'Del' in curPM:
+                                                pass
+                                            else:
+                                                mutntseq += curPM[-1]
+                                        startcodonpos = ((orfstartpos-1)//3)+1
+                                        endcodonpos = ((orfendpos-1)//3)+1
+                                        startmod = orfstartpos % 3
+                                        endmod = orfendpos % 3
+                                        wtorfstartpos = orfstartpos
+                                        wtorfendpos = orfendpos
+                                        if startmod == 2:
+                                            wtorfstartpos = orfstartpos-1
+                                            mutntseq = ref[1][orfstartpos-2] + mutntseq
+                                        elif startmod == 0:
+                                            wtorfstartpos = orfstartpos-2
+                                            mutntseq = ref[1][orfstartpos-3:orfstartpos-1] + mutntseq
+                                        if endmod == 2:
+                                            wtorfendpos = orfendpos+1
+                                            mutntseq += ref[1][orfendpos]
+                                        elif endmod == 1:
+                                            wtorfendpos = orfendpos-2
+                                            mutntseq += ref[1][orfendpos:orfendpos+2]
+                                        wtntseq = ref[1][wtorfstartpos-1:wtorfendpos]
+                                        wtAAseq = ref[3][1][startcodonpos-1:endcodonpos]
+                                        mutAAseq = ''
+                                        for i in range(0, (len(mutntseq)//3)):
+                                            try:
+                                                mutAAseq += AAcall(mutntseq[i*3:(i*3)+3])
+                                            except:
+                                                mutAAseq += '(fs)'
+                                        if startcodonpos == endcodonpos:
+                                            combinedmut.append(f"{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}{mutAAseq})")
+                                        else:
+                                            combinedmut.append(f"{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}-{endcodonpos}{mutAAseq})")
+                                    else:
+                                        curPM = entry[0][0]
+                                        if 'Del' in  curPM or 'insert' in curPM:
+                                            combinedmut.append(curPM)
+                                        else:
+                                            ORFPos = entry[0][1]
+                                            AAinfo = singletCodon(ORFPos, curPM[-1], (ref[1]))
+                                            PM = curPM[0] + str(ORFPos) + curPM[-1] + "(" + ref[3][1][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')'
+                                            combinedmut.append(PM)
+                            mutations = combinedmut
 
                         mutations = " ".join(mutations)
 
@@ -961,13 +955,13 @@ def faSAMparse(args, ref, file): # process SAM files
                                 reads_fh.write(f"{readID}\t{mutations}\n")
                         else:
                             try:
-                                seq_species[str(POS)+' '+mutations+' '+str(POS+q_pars_pos)] += reads_count
+                                seq_species[str(Pos)+' '+mutations+' '+str(Pos+q_pars_pos)] += reads_count
                             except:
-                                seq_species[str(POS)+' '+mutations+' '+str(POS+q_pars_pos)] = reads_count
+                                seq_species[str(Pos)+' '+mutations+' '+str(Pos+q_pars_pos)] = reads_count
                             if args.read == 1:
-                                reads_fh.write(f"{readID}\t{str(POS)} {mutations} {str(POS+q_pars_pos)}\n")
+                                reads_fh.write(f"{readID}\t{str(Pos)} {mutations} {str(Pos+q_pars_pos)}\n")
 
-                    for i in range(POS, POS+q_pars_pos): # update coverage
+                    for i in range(Pos, Pos+q_pars_pos): # update coverage
                         try:
                             coverage[i] += reads_count
                         except:
@@ -1017,15 +1011,15 @@ def faSAMparse(args, ref, file): # process SAM files
                     if indel_dict[key] / sam_read_count >= args.min_samp_abund and args.wgs == 0:
                         indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key]/sam_read_count):.3f}\n")
                     elif args.wgs == 1:
-                        indelPOS = ''
+                        indelPos = ''
                         for c in key:
                             if c.isdigit():
-                                indelPOS += c
+                                indelPos += c
                             else:
                                 break
-                        indelPOS = int(indelPOS)
-                        if indel_dict[key] / coverage[indelPOS] >= args.min_samp_abund:
-                            indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key] / coverage[indelPOS]):.3f}\n")
+                        indelPos = int(indelPos)
+                        if indel_dict[key] / coverage[indelPos] >= args.min_samp_abund:
+                            indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key] / coverage[indelPos]):.3f}\n")
                 else:
                     break
             if len(indels_to_write) > 0:
@@ -1047,77 +1041,77 @@ def faSAMparse(args, ref, file): # process SAM files
             if args.ntvar == 1:
                 ntcallv_fh = open(samp+'_nt_calls_varonly.tsv', "w")
                 ntcallv_fh.write(samp+"("+str(sam_read_count)+")\n")
-            sorted_POS = sorted(nt_call_dict_dict)
+            sorted_Pos = sorted(nt_call_dict_dict)
             if args.AAreport == 1:
 
-                ntcall_fh.write("Position\tref NT\tAA POS\tref AA\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
+                ntcall_fh.write("Position\tref NT\tAA Pos\tref AA\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
                 if args.ntvar == 1:
-                    ntcallv_fh.write("Position\tref NT\tAA POS\tref AA\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
+                    ntcallv_fh.write("Position\tref NT\tAA Pos\tref AA\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
                 consensus = {}
-                for POS in sorted_POS:
+                for Pos in sorted_Pos:
                     try:
-                        total = coverage[POS]
+                        total = coverage[Pos]
                     except:
                         total = 0
                     if total >= (sam_read_count * args.ntabund) and total >= args.ntcover:
-                        # AAinfo = singletCodon(POS, ref[1][POS-1], ref)
-                        POS_calls = {}
-                        for key in nt_call_dict_dict[POS]:
-                            POS_calls[key] = nt_call_dict_dict[POS][key]
-                        sorted_calls = sorted(POS_calls, key=POS_calls.__getitem__, reverse=True)
+                        # AAinfo = singletCodon(Pos, ref[1][Pos-1], ref)
+                        Pos_calls = {}
+                        for key in nt_call_dict_dict[Pos]:
+                            Pos_calls[key] = nt_call_dict_dict[Pos][key]
+                        sorted_calls = sorted(Pos_calls, key=Pos_calls.__getitem__, reverse=True)
 
-                        ntcall_lines['line'][POS] = (str(POS)+"\t"+ref[1][POS-1]+"\t"+str(((POS-1)//3)+1)+"\t"+ref[3][1][((POS-1)//3)])
-                        ntcall_lines['line'][POS] +=("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
-                        ntcall_lines['line'][POS] +=("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[0]]))
-                        ntcall_lines['line'][POS] +=(f"\t{(nt_call_dict_dict[POS][sorted_calls[0]]/total):.3f}")
+                        ntcall_lines['line'][Pos] = (str(Pos)+"\t"+ref[1][Pos-1]+"\t"+str(((Pos-1)//3)+1)+"\t"+ref[3][1][((Pos-1)//3)])
+                        ntcall_lines['line'][Pos] +=("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']))
+                        ntcall_lines['line'][Pos] +=("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]]))
+                        ntcall_lines['line'][Pos] +=(f"\t{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}")
 
-                        consensus[POS] = sorted_calls
+                        consensus[Pos] = sorted_calls
 
 
-                for POS in sorted_POS:
+                for Pos in sorted_Pos:
                     try:
-                        ntcall_lines['line'][POS]
+                        ntcall_lines['line'][Pos]
                     except:
                         pass
                     else:
-                        if consensus[POS][0] != ref[1][POS-1]:
-                            mod = (POS)%3
+                        if consensus[Pos][0] != ref[1][Pos-1]:
+                            mod = (Pos)%3
 
                             if mod == 0:
                                 try:
-                                    codon = consensus[POS-2][0]+consensus[POS-1][0]+ consensus[POS][0]
+                                    codon = consensus[Pos-2][0]+consensus[Pos-1][0]+ consensus[Pos][0]
                                 except:
                                     codon = 'NNN'
                             elif mod == 2:
                                 try:
-                                    codon = consensus[POS-1][0]+consensus[POS][0]+ consensus[POS+1][0]
+                                    codon = consensus[Pos-1][0]+consensus[Pos][0]+ consensus[Pos+1][0]
                                 except:
                                     codon = 'NNN'
                             elif mod == 1:
                                 try:
-                                    codon = consensus[POS][0]+consensus[POS+1][0]+ consensus[POS+2][0]
+                                    codon = consensus[Pos][0]+consensus[Pos+1][0]+ consensus[Pos+2][0]
                                 except:
                                     codon = 'NNN'
-                            ntcall_lines['line'][POS] +=("\t"+AAcall(codon)+"\t"+singletCodon(POS, consensus[POS][0], ref[1])[1])
+                            ntcall_lines['line'][Pos] +=("\t"+AAcall(codon)+"\t"+singletCodon(Pos, consensus[Pos][0], ref[1])[1])
                         else:
-                            ntcall_lines['line'][POS] +=("\t\t")
+                            ntcall_lines['line'][Pos] +=("\t\t")
 
-                        if (nt_call_dict_dict[POS][consensus[POS][1]] >= args.min_count) and ((nt_call_dict_dict[POS][consensus[POS][1]] / total) >= args.min_samp_abund):
-                            ntcall_lines['line'][POS] +=(f"\t{consensus[POS][1]}\t{nt_call_dict_dict[POS][consensus[POS][1]]}\t{(nt_call_dict_dict[POS][consensus[POS][1]]/total):.3f}"+"\t"+singletCodon(POS, consensus[POS][1], ref[1])[1])
+                        if (nt_call_dict_dict[Pos][consensus[Pos][1]] >= args.min_count) and ((nt_call_dict_dict[Pos][consensus[Pos][1]] / total) >= args.min_samp_abund):
+                            ntcall_lines['line'][Pos] +=(f"\t{consensus[Pos][1]}\t{nt_call_dict_dict[Pos][consensus[Pos][1]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][1]]/total):.3f}"+"\t"+singletCodon(Pos, consensus[Pos][1], ref[1])[1])
 
-                            if (nt_call_dict_dict[POS][consensus[POS][2]] >= args.min_count) and (nt_call_dict_dict[POS][consensus[POS][2]] / total >= args.min_samp_abund):
-                                ntcall_lines['line'][POS] +=(f"\t{consensus[POS][2]}\t{nt_call_dict_dict[POS][consensus[POS][2]]}\t{(nt_call_dict_dict[POS][consensus[POS][2]]/total):.3f}\t{singletCodon(POS, consensus[POS][2], ref[1])[1]}")
+                            if (nt_call_dict_dict[Pos][consensus[Pos][2]] >= args.min_count) and (nt_call_dict_dict[Pos][consensus[Pos][2]] / total >= args.min_samp_abund):
+                                ntcall_lines['line'][Pos] +=(f"\t{consensus[Pos][2]}\t{nt_call_dict_dict[Pos][consensus[Pos][2]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][2]]/total):.3f}\t{singletCodon(Pos, consensus[Pos][2], ref[1])[1]}")
 
-                for POS in ntcall_lines['line']:
-                    ntcall_fh.write(ntcall_lines['line'][POS])
+                for Pos in ntcall_lines['line']:
+                    ntcall_fh.write(ntcall_lines['line'][Pos])
                     ntcall_fh.write("\n")
                     if args.ntvar == 1:
                         try:
-                            ntcall_lines['variant'][POS]
+                            ntcall_lines['variant'][Pos]
                         except:
                             pass
                         else:
-                            ntcallv_fh.write(ntcall_lines['line'][POS])
+                            ntcallv_fh.write(ntcall_lines['line'][Pos])
                             ntcallv_fh.write("\n")
                 if args.ntvar == 1:
                         ntcallv_fh.close()
@@ -1127,33 +1121,33 @@ def faSAMparse(args, ref, file): # process SAM files
                 if args.ntvar == 1:
                     ntcallv_fh.write("Position\tref NT\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
 
-                for POS in sorted_POS:
+                for Pos in sorted_Pos:
                     try:
-                        total = coverage[POS] # sum(nt_call_dict_dict[POS].values())
+                        total = coverage[Pos] # sum(nt_call_dict_dict[Pos].values())
                     except:
                         total = 0
                     if total >= (sam_read_count * args.ntabund) and total >= args.ntcover:
-                        POS_calls = {}
-                        for key in nt_call_dict_dict[POS]:
-                            POS_calls[key] = nt_call_dict_dict[POS][key]
-                        sorted_calls = sorted(POS_calls, key=POS_calls.__getitem__, reverse=True)
+                        Pos_calls = {}
+                        for key in nt_call_dict_dict[Pos]:
+                            Pos_calls[key] = nt_call_dict_dict[Pos][key]
+                        sorted_calls = sorted(Pos_calls, key=Pos_calls.__getitem__, reverse=True)
 
-                        ntcall_fh.write(str(POS)+"\t"+ref[1][POS-1])
-                        ntcall_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
-                        ntcall_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[0]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[0]]/total):.3f}")
+                        ntcall_fh.write(str(Pos)+"\t"+ref[1][Pos-1])
+                        ntcall_fh.write("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']))
+                        ntcall_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}")
 
-                        if (nt_call_dict_dict[POS][sorted_calls[1]] >= args.min_count) and (nt_call_dict_dict[POS][sorted_calls[1]] / total) >= args.min_samp_abund:
+                        if (nt_call_dict_dict[Pos][sorted_calls[1]] >= args.min_count) and (nt_call_dict_dict[Pos][sorted_calls[1]] / total) >= args.min_samp_abund:
                             if args.ntvar == 1:
-                                ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1])
-                                ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
+                                ntcallv_fh.write(str(Pos)+"\t"+ref[1][Pos-1])
+                                ntcallv_fh.write("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']))
                                 ntcallv_fh.write("\t"+str(total)+"\t\t")
                                 ntcallv_fh.write(f"\t")
-                                ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
-                            ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
-                            if (nt_call_dict_dict[POS][sorted_calls[2]] > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[2]] /total > args.min_samp_abund):
-                                ntcall_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
+                                ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[1]]/total):.3f}")
+                            ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[1]]/total):.3f}")
+                            if (nt_call_dict_dict[Pos][sorted_calls[2]] > args.min_count) and (nt_call_dict_dict[Pos][sorted_calls[2]] /total > args.min_samp_abund):
+                                ntcall_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[2]]/total):.3f}")
                                 if args.ntvar == 1:
-                                    ntcallv_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
+                                    ntcallv_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[2]]/total):.3f}")
                             if args.ntvar == 1:
                                 ntcallv_fh.write("\n")
 
@@ -1193,30 +1187,30 @@ def faSAMparse(args, ref, file): # process SAM files
                             # print(key)
                         splitcombos = key.split()
                         if len(splitcombos) == 1:
-                            coveragePOS = ''
+                            coveragePos = ''
                             for c in key.strip('ATGC'):
                                 if c.isdigit():
-                                    coveragePOS += c
+                                    coveragePos += c
                                 else:
                                     break
                             # print(key)
-                            # print(coveragePOS)
-                            coveragepercent = combinations[key] / coverage[int(coveragePOS)]
+                            # print(coveragePos)
+                            coveragepercent = combinations[key] / coverage[int(coveragePos)]
                         else:
-                            startcovPOS = ''
+                            startcovPos = ''
                             for c in splitcombos[0].strip('ATGC'):
                                 if c.isdigit():
-                                    startcovPOS += c
+                                    startcovPos += c
                                 else:
                                     break
-                            endcovPOS = ''
+                            endcovPos = ''
                             for c in splitcombos[-1].strip('ATGC'):
                                 if c.isdigit():
-                                    endcovPOS += c
+                                    endcovPos += c
                                 else:
                                     break
                             coveragevals = []
-                            for i in range(int(startcovPOS), int(endcovPOS)+1):
+                            for i in range(int(startcovPos), int(endcovPos)+1):
                                 coveragevals.append(coverage[i])
                             mincov = min(coverval for coverval in coveragevals)
                             coveragepercent = combinations[key] / mincov
@@ -1227,6 +1221,7 @@ def faSAMparse(args, ref, file): # process SAM files
             covar_fh.close()
             # END COVAR OUT
             # print(f"End covar out for {samp}")
+    print(f'End {file} main output')
 
 def gbSAMparse(args, ref, file): # process SAM files
 
@@ -1283,12 +1278,11 @@ def gbSAMparse(args, ref, file): # process SAM files
                         # print(f"At line {sam_line_count} of {samp} SAM")
 
                     CIGAR = splitline[5]
-                    POS = int(splitline[3])
+                    Pos = int(splitline[3])
 
                     readID = splitline[0]
                     query_seq = splitline[9].upper()
                     run_length = 0
-                    query_seq_parsed = ''
                     query_pos = 0
                     q_pars_pos = 0
                     mutations = []
@@ -1303,10 +1297,10 @@ def gbSAMparse(args, ref, file): # process SAM files
                             if C == 'I':
                                 if query_pos > 0:
                                     # add insertion to dict
-                                    iPOS = q_pars_pos+POS
+                                    iPos = q_pars_pos+Pos
 
                                     iSeq = query_seq[query_pos: query_pos+run_length]
-                                    istring = str(iPOS)+'-insert'+iSeq
+                                    istring = str(iPos)+'-insert'+iSeq
 
 
                                     if args.AAreport == 1:
@@ -1315,15 +1309,15 @@ def gbSAMparse(args, ref, file): # process SAM files
                                         for orf in ref[3]:
                                             orflength = 0
                                             for rf in ref[3][orf]['reading frames']:
-                                                if iPOS >= rf[0] and iPOS <= rf[1]:
-                                                    iProt += "(" + orf + "_"
-                                                    orfPOS = 1 + iPOS - rf[0] + orflength
-                                                    iProt += "nt:" + str(orfPOS)
+                                                if iPos >= rf[0] and iPos <= rf[1]:
+                                                    iProt += "|(" + orf + ":"
+                                                    orfPos = 1 + iPos - rf[0] + orflength
+                                                    iProt += str(orfPos)+iSeq
                                                     if (run_length % 3 == 0):
-                                                        if orfPOS % 3 == 1:
+                                                        if orfPos % 3 == 1:
                                                             for x in range(0, (run_length//3)):
                                                                 AA = AAcall(iSeq[x*3]+iSeq[x*3+1]+iSeq[x*3+2])
-                                                        elif orfPOS % 3 == 2:
+                                                        elif orfPos % 3 == 2:
                                                             if query_pos > 0:
                                                                 ipSeq = query_seq[query_pos-1:query_pos+run_length+2]
                                                             else:
@@ -1338,10 +1332,10 @@ def gbSAMparse(args, ref, file): # process SAM files
 
                                                             for x in range(0, (run_length//3)+1):
                                                                 AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
-                                                        iProt = iProt + "_AA:" + str((orfPOS//3)+1) + AA
+                                                        iProt = iProt + "(" + str((orfPos//3)+1) + AA
                                                     else:
-                                                        iProt += "_AA:" + str((orfPOS//3)+1) + "fs"
-                                                    iProt += ")"
+                                                        iProt += "(" + str((orfPos//3)+1) + "fs"
+                                                    iProt += "))"
                                                 orflength += rf[1] - rf[0] + 1
 
                                         istring += iProt
@@ -1362,43 +1356,48 @@ def gbSAMparse(args, ref, file): # process SAM files
                                     query_pos = query_pos + run_length
 
                             elif C == 'D':
-                                for X in range(0, run_length):
-                                    query_seq_parsed += '-'
 
-                                delPOS = q_pars_pos+POS
-                                delstring = str(delPOS)+'-'+str(delPOS+run_length-1)+'Del'
+                                delPos = q_pars_pos+Pos
+                                delnts = ref[1][delPos-1:delPos+run_length-1]
+                                delstring = delnts+str(delPos)+'-'+str(delPos+run_length-1)+'Del'
                                 if args.AAreport == 1:
                                     delProt = ""
                                     for orf in ref[3]:
                                         orflength = 0
                                         for rf in ref[3][orf]['reading frames']:
-                                            if delPOS >= rf[0] and delPOS <= rf[1]:
-                                                delProt += "(" + orf + "_"
-                                                orfPOS = 1 + delPOS - rf[0] + orflength
-                                                delProt += "nt:" + str(orfPOS) + "-" + str(orfPOS+run_length-1)
-                                                if (delPOS+run_length-1) <= rf[1]:
-                                                    if (run_length % 3 == 0):
-                                                        delProt += "_AA:"
-                                                        if ((orfPOS) % 3 == 1 ):
-                                                            delProt +=  ref[3][orf]["AAs"][orfPOS//3:orfPOS//3+(run_length//3)] +str((orfPOS//3)+1) + "-" + str((orfPOS//3)+(int(run_length/3))) + 'del'
-                                                        else:
-                                                            newAArefpos = ((orfPOS) // 3)
-                                                            if (orfPOS) % 3 == 2:
-                                                                newcodon = query_seq[query_pos-1:query_pos+2]
-                                                            else:
-                                                                newcodon = query_seq[query_pos-2:query_pos+1]
-                                                            delProt += ref[3][orf]["AAs"][newAArefpos] + str(newAArefpos+1) + AAcall(newcodon)
-                                                            if run_length > 3:
-                                                                delProt += ":" + ref[3][orf]["AAs"][(orfPOS//3)+1:orfPOS//3+1+(run_length//3)] + str((orfPOS//3)+2) + "-" + str((orfPOS//3)+1+(int(run_length/3))) + 'del'
-
+                                            if delPos > rf[1] or (delPos+run_length-1) < rf[0]:
+                                                pass
+                                            elif delPos >= rf[0] and (delPos+run_length-1) <= rf[1]:
+                                                delProt += "|(" + orf + ":"
+                                                orfPos = 1 + delPos - rf[0] + orflength
+                                                delProt +=  delnts + str(orfPos) + "-" + str(orfPos+run_length-1)+"Del"
+                                                startcodon = ((orfPos-1)//3)+1
+                                                if (run_length % 3 == 0):
+                                                    delProt += "("
+                                                    endcodon = ((orfPos+run_length-2)//3)+1
+                                                    delProt +=  ref[3][orf]["AAs"][startcodon-1:endcodon] +str(startcodon) + "-" + str(endcodon)
+                                                    if ((orfPos) % 3 == 1 ):
+                                                        delProt += 'del'
                                                     else:
-                                                        delProt += "_AA:" + str((orfPOS//3)+1) + "fs"
-                                                    delProt += ")"
-
+                                                        if (orfPos) % 3 == 2:
+                                                            newcodon = query_seq[query_pos-1:query_pos+2]
+                                                        else:
+                                                            newcodon = query_seq[query_pos-2:query_pos+1]
+                                                        delProt += AAcall(newcodon) + 'del'
                                                 else:
-                                                    delProt += "Frame shift / Splicing / Terminating codon disrupted"
-                                            elif (delPOS+run_length-1) >= rf[0] and (delPOS+run_length-1) <= rf[1]:
-                                                delProt += "Frame shift / Splicing / Start codon disrupted"
+                                                    delProt += "(" + str(startcodon) + "fs"
+                                                delProt += "))"
+                                                break
+                                            elif (delPos+run_length-1) >= rf[0] and (delPos+run_length-1) <= rf[1]:
+                                                delProt += "|(" + orf
+                                                if orflength == 0:
+                                                    delProt += ":Start_disrupted)"
+                                                else:
+                                                    delProt += ":fs/Splicing_disrupted)"
+                                                break
+                                            else:
+                                                delProt += "|(" + orf + ":fs/Splicing/Termination_disrupted)"
+                                                break
                                             orflength += rf[1] - rf[0] + 1
                                     delstring += delProt
 
@@ -1406,7 +1405,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 mutations.append(delstring)
 
                                 if args.nt_call == 1:
-                                    for N in range(q_pars_pos+POS, q_pars_pos+POS+int(run_length)):
+                                    for N in range(q_pars_pos+Pos, q_pars_pos+Pos+int(run_length)):
                                         try:
                                             nt_call_dict_dict[N]
                                         except:
@@ -1431,35 +1430,35 @@ def gbSAMparse(args, ref, file): # process SAM files
 
                             elif C == 'M':
                                 offset = q_pars_pos-query_pos
-                                refPOS = POS+offset
+                                refPos = Pos+offset
 
-                                for ntPOS in range(query_pos, query_pos+run_length):
-                                    if query_seq[ntPOS] == 'A' or query_seq[ntPOS] == 'T' or query_seq[ntPOS] == 'C' or query_seq[ntPOS] == 'G' or query_seq[ntPOS] == '-':
-                                        PMPOS = refPOS+ntPOS
-                                        if query_seq[ntPOS] != ref[1][PMPOS-1]:
-                                            PM = ref[1][PMPOS-1] +str(PMPOS)+query_seq[ntPOS]
+                                for ntPos in range(query_pos, query_pos+run_length):
+                                    if query_seq[ntPos] == 'A' or query_seq[ntPos] == 'T' or query_seq[ntPos] == 'C' or query_seq[ntPos] == 'G' or query_seq[ntPos] == '-':
+                                        PMPos = refPos+ntPos
+                                        if query_seq[ntPos] != ref[1][PMPos-1]:
+                                            PM = ref[1][PMPos-1] +str(PMPos)+query_seq[ntPos]
                                             if args.AAreport == 1 and args.AAcodonasMNP == 0:
                                                 for orf in ref[3]:
                                                     orflength = 0
                                                     for rf in ref[3][orf]['reading frames']:
-                                                        if PMPOS >= rf[0] and PMPOS <= rf[1]:
-                                                            ORFPOS = PMPOS-rf[0]+1+orflength
-                                                            AAinfo = singletCodon(ORFPOS, query_seq[ntPOS], (ref[3][orf]['nts']))
-                                                            PM += '(' + orf + "_nts:" + str(ORFPOS) + "_AA:" + ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')'
+                                                        if PMPos >= rf[0] and PMPos <= rf[1]:
+                                                            ORFPos = PMPos-rf[0]+1+orflength
+                                                            AAinfo = singletCodon(ORFPos, query_seq[ntPos], (ref[3][orf]['nts']))
+                                                            PM += '|(' + orf + ":" + ref[1][PMPos-1] + str(ORFPos) + query_seq[ntPos] + "(" + ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+'))'
                                                         orflength += rf[1] - rf[0] + 1
                                             mutations.append(PM)
                                         if args.nt_call == 1:
                                             try:
-                                                nt_call_dict_dict[PMPOS]
+                                                nt_call_dict_dict[PMPos]
                                             except:
-                                                nt_call_dict_dict[PMPOS] = {'A' : 0,
+                                                nt_call_dict_dict[PMPos] = {'A' : 0,
                                                                                    'T' : 0,
                                                                                    'C' : 0,
                                                                                    'G' : 0,
                                                                                    '-' : 0}
-                                                nt_call_dict_dict[PMPOS][query_seq[ntPOS]] = reads_count
+                                                nt_call_dict_dict[PMPos][query_seq[ntPos]] = reads_count
                                             else:
-                                                nt_call_dict_dict[PMPOS][query_seq[ntPOS]] += reads_count
+                                                nt_call_dict_dict[PMPos][query_seq[ntPos]] += reads_count
 
 
                                 q_pars_pos = q_pars_pos + run_length
@@ -1482,121 +1481,195 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 seq_species['Reference'] = reads_count
                         else:
                             try:
-                                seq_species[str(POS)+' Ref '+str(POS+q_pars_pos)] += reads_count
+                                seq_species[str(Pos)+' Ref '+str(Pos+q_pars_pos)] += reads_count
                             except:
-                                seq_species[str(POS)+' Ref '+str(POS+q_pars_pos)] = reads_count
+                                seq_species[str(Pos)+' Ref '+str(Pos+q_pars_pos)] = reads_count
                         if args.read == 1:
                             reads_fh.write(f"{readID}\tReference\n")
 
                     else: # record variants and counts
                         if args.AAreport == 1 and args.AAcodonasMNP == 1:
+
                             mutorfs = {}
                             for orf in ref[3]:
+                                MNPs = []
+                                curMNP = ''
+                                last_codon = -1
+
+                                fshift = 0
                                 for mut in mutations:
-                                    if not 'Del' in mut and not 'insert' in mut:
-                                        mutPOS = int(''.join([c for c in mut if c.isdigit()]))
-                                        frame = 0
-                                        orflength = 0
-                                        for rf in ref[3][orf]['reading frames']:
-                                            if mutPOS >= rf[0] and mutPOS <= rf[1]:
-                                                orfPOS = mutPOS-ref[3][orf]['reading frames'][frame][0]+1+orflength
-                                                try:
-                                                    mutorfs[orf]['muts'].append([frame, mut, orfPOS])
-                                                except:
-                                                    mutorfs[orf] = {'muts' : [[frame, mut, orfPOS]],
-                                                                    'mutstrings' : {}
-                                                                    }
-                                            frame += 1
-                                            orflength += rf[1] - rf[0] + 1
-                            for orf in mutorfs:
-                                codon = ''
-                                skip = 0
-                                MNP = ''
-                                for i in range(0, len(mutorfs[orf]['muts'])): # checking for MNP
-
-                                    if skip > 0:
-                                        skip -= 1
+                                    if (orf+':fs/') in mut or (orf+':Star') in mut:
+                                        if curMNP:
+                                            MNPs.append(curMNP)
+                                        MNPs.append(mut)
+                                        curMNP = ''
+                                        last_codon = -1
+                                        continue
+                                    if '-' in mut:
+                                        startPos = int(mut.split('-')[0].strip('ATCGN'))
                                     else:
-                                        mut1POS = mutorfs[orf]['muts'][i][2]
-                                        try:
-                                            mutorfs[orf]['muts'][i+1]
-                                        except:
-                                            AAinfo = singletCodon(mut1POS, mutorfs[orf]['muts'][i][1][-1], ref[3][orf]['nts'])
-                                            try:
-                                                mutorfs[orf]['mutstrings'][mutorfs[orf]['muts'][i][1]] += ", nts:" + str(mutorfs[orf]['muts'][i][2])+'_AAs:'+ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]
-                                            except:
-                                                mutorfs[orf]['mutstrings'][mutorfs[orf]['muts'][i][1]] = "nts:" + str(mutorfs[orf]['muts'][i][2])+'_AAs:'+ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]
-                                        else:
-                                            if mut1POS % 3 == 0:
-                                                AAinfo = singletCodon(mut1POS, mutorfs[orf]['muts'][i][1][-1], ref[3][orf]['nts'])
-                                                try:
-                                                    mutorfs[orf]['mutstrings'][mutorfs[orf]['muts'][i][1]] += ", nts:" + str(mutorfs[orf]['muts'][i][2])+'_AAs:'+ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]
-                                                except:
-                                                    mutorfs[orf]['mutstrings'][mutorfs[orf]['muts'][i][1]] = "nts:" + str(mutorfs[orf]['muts'][i][2])+'_AAs:'+ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]
-                                            else:
-                                                mut2POS = mutorfs[orf]['muts'][i+1][2]
-                                                if mut2POS - mut1POS < 3:
-                                                    AAPOS = mut1POS // 3
-                                                    if mut1POS % 3 == 1:
-                                                        if mut2POS % 3 == 0:
-                                                            codon = mutorfs[orf]['muts'][i][1][-1]+ref[3][orf]['nts'][mut1POS]+mutorfs[orf]['muts'][i+1][1][-1]
-                                                            MNP = mutorfs[orf]['muts'][i][1][-1]+'r'+mutorfs[orf]['muts'][i+1][1][-1]
-                                                            skip = 1
-                                                        else:
-                                                            try:
-                                                                mutorfs[orf]['muts'][i+2]
-                                                            except:
-                                                                codon = mutorfs[orf]['muts'][i][1][-1]+mutorfs[orf]['muts'][i+1][1][-1]+ref[3][orf]['nts'][mut2POS]
-                                                                MNP = mutorfs[orf]['muts'][i][1][-1]+mutorfs[orf]['muts'][i+1][1][-1]+'r'
-                                                                skip = 1
-                                                            else:
-                                                                mut3POS = mutorfs[orf]['muts'][i+2][2]
-                                                                if mut2POS == mut3POS -1:
-                                                                    codon = mutorfs[orf]['muts'][i][1][-1]+mutorfs[orf]['muts'][i+1][1][-1]+mutorfs[orf]['muts'][i+2][1][-1]
-                                                                    MNP = mutorfs[orf]['muts'][i][1][-1]+mutorfs[orf]['muts'][i+1][1][-1]+mutorfs[orf]['muts'][i+2][1][-1]
-                                                                    skip = 2
-                                                                else:
-                                                                    codon = mutorfs[orf]['muts'][i][1][-1]+mutorfs[orf]['muts'][i+1][1][-1]+ref[3][orf]['nts'][mut2POS]
-                                                                    MNP = mutorfs[orf]['muts'][i][1][-1]+mutorfs[orf]['muts'][i+1][1][-1]+'r'
-                                                                    skip = 1
-                                                        try:
-                                                            mutorfs[orf]['mutstrings'][mutorfs[orf]['muts'][i][1]] += ", nts:"+ ref[3][orf]['nts'][mut1POS-1:mut1POS+2] + str(mut1POS)+MNP+'_AAs:'+ref[3][orf]["AAs"][AAPOS]+str(AAPOS+1)+AAcall(codon)
-                                                        except:
-                                                            mutorfs[orf]['mutstrings'][mutorfs[orf]['muts'][i][1]] = "nts:"+ ref[3][orf]['nts'][mut1POS-1:mut1POS+2] + str(mut1POS)+MNP+'_AAs:'+ref[3][orf]["AAs"][AAPOS]+str(AAPOS+1)+AAcall(codon)
-                                                    elif mut2POS - mut1POS == 1:
-                                                        codon = ref[3][orf]['nts'][mut1POS-2]+mutorfs[orf]['muts'][i][1][-1]+mutorfs[orf]['muts'][i+1][1][-1]
-                                                        MNP = "r" + mutorfs[orf]['muts'][i][1][-1]+mutorfs[orf]['muts'][i+1][1][-1]
-                                                        skip = 1
-                                                        try:
-                                                            mutorfs[orf]['mutstrings'][mutorfs[orf]['muts'][i][1]] += ", nts:"+ ref[3][orf]['nts'][mut1POS-2:mut1POS+1] + str(mut1POS)+MNP+'_AAs:'+ref[3][orf]["AAs"][AAPOS]+str(AAPOS+1)+AAcall(codon)
-                                                        except:
-                                                            mutorfs[orf]['mutstrings'][mutorfs[orf]['muts'][i][1]] = "nts:"+ ref[3][orf]['nts'][mut1POS-2:mut1POS+1] + str(mut1POS)+MNP+'_AAs:'+ref[3][orf]["AAs"][AAPOS]+str(AAPOS+1)+AAcall(codon)
+                                        startPos = int(mut.split('(')[0].strip('ATCGN'))
+                                    endPos = startPos
+                                    if 'Del' in mut:
+                                        endPos = int(mut.split('Del')[0].split('-')[1])
+                                    orflength = 0
+                                    for rf in ref[3][orf]['reading frames']:
+                                        if startPos >= rf[0] and startPos <= rf[1]:
+
+                                            orfstartpos = 1 + startPos - rf[0] + orflength
+                                            orfendpos = 1 + endPos - rf[0] + orflength
+                                            startcodon = (((orfstartpos)-1)//3)+1
+                                            endcodon = ((orfendpos-1)//3)+1
+                                            if curMNP:
+                                                if 'fs' in mut:
+                                                    mutshift = 0
+                                                    if 'insert' in mut:
+                                                        mutshift += len(mut.split('|')[0].split('insert')[1])
                                                     else:
-                                                        AAinfo = singletCodon(mut1POS, mutorfs[orf]['muts'][i][1][-1], ref[3][orf]['nts'])
-                                                        try:
-                                                            mutorfs[orf]['mutstrings'][mutorfs[orf]['muts'][i][1]] += ", nts:"+ str(mutorfs[orf]['muts'][i][2]) +'_AAs:'+ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]
-                                                        except:
-                                                            mutorfs[orf]['mutstrings'][mutorfs[orf]['muts'][i][1]] = "nts:"+ str(mutorfs[orf]['muts'][i][2]) +'_AAs:'+ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]
+                                                        mutshift -= len(mut.split('-')[0].strip('0123456789'))
+
+                                                    if (fshift % 3) == 0:
+                                                        if startcodon == last_codon:
+                                                            curMNP.append([mut, orfstartpos])
+                                                            fshift += mutshift
+                                                        else:
+                                                            MNPs.append(curMNP)
+                                                            curMNP = [[mut, orfstartpos]]
+                                                            fshift = mutshift
+
+                                                    else:
+                                                        if startcodon < last_codon + 5:
+                                                            curMNP.append([mut, orfstartpos])
+                                                            fshift += mutshift
+                                                        else:
+                                                            ## splitfsMNP() make process
+                                                            fsfreeMNP = []
+                                                            for SNP in curMNP:
+                                                                if 'fs' in SNP:
+                                                                    if fsfreeMNP:
+                                                                        MNPs.append(fsfreeMNP)
+                                                                        fsfreeMNP = []
+                                                                    MNPs.append([SNP])
+                                                                else:
+                                                                    fsfreeMNP.append(SNP)
+                                                            if fsfreeMNP:
+                                                                MNPs.append(fsfreeMNP)
+                                                            curMNP = [[mut, orfstartpos]]
+                                                            fshift = mutshift
                                                 else:
-                                                    AAinfo = singletCodon(mut1POS, mutorfs[orf]['muts'][i][1][-1], ref[3][orf]['nts'])
-                                                    try:
-                                                        mutorfs[orf]['mutstrings'][mutorfs[orf]['muts'][i][1]] += ", nts:"+ str(mutorfs[orf]['muts'][i][2]) +'_AAs:'+ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]
-                                                    except:
-                                                        mutorfs[orf]['mutstrings'][mutorfs[orf]['muts'][i][1]] = "nts:"+ str(mutorfs[orf]['muts'][i][2]) +'_AAs:'+ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]
+                                                    if startcodon == last_codon:
+                                                        curMNP.append([mut, orfstartpos])
+                                                    else:
+                                                        if (fshift % 3) == 0:
+                                                            MNPs.append(curMNP)
+                                                        else:
+                                                            ## splitfsMNP() make process
+                                                            fsfreeMNP = []
+                                                            for SNP in curMNP:
+                                                                if 'fs' in SNP:
+                                                                    if fsfreeMNP:
+                                                                        MNPs.append(fsfreeMNP)
+                                                                        fsfreeMNP = []
+                                                                    MNPs.append([SNP])
+                                                                else:
+                                                                    fsfreeMNP.append(SNP)
+                                                            if fsfreeMNP:
+                                                                MNPs.append(fsfreeMNP)
+                                                        curMNP = [[mut, orfstartpos]]
+                                                        fshift = 0
+                                            else:
+                                                curMNP = [[mut, orfstartpos]]
+                                            last_codon = endcodon
+                                        orflength += rf[1] - rf[0] + 1
+                                if curMNP:
+                                    MNPs.append(curMNP)
+
+                                if MNPs:
+                                    mutorfs[orf] = {}
+                                    for entry in MNPs:
+                                        if len(entry) > 1:
+                                            MNPreport = ''
+                                            mutntseq = ''
+                                            orfstartpos = entry[0][1]
+                                            orfendpos = entry[-1][1]
+                                            if 'Del' in entry[-1][0]:
+                                                orfendpos += len(entry[-1][0].split('-')[0].strip('0123456789')) - 1
+
+                                            for i in range(0, len(entry)):
+                                                curPM = entry[i][0]
+                                                if i > 0:
+                                                    if entry[i][1] > entry[i-1][1]:
+                                                        if 'insert' in entry[i-1][0]:
+                                                            mutntseq += ref[3][orf]['nts'][entry[i-1][1]-1:entry[i][1]-1]
+                                                        elif 'Del' in entry[i-1][0]:
+                                                            mutntseq += ref[3][orf]['nts'][entry[i-1][1]+len(entry[i-1][0].split('-')[0].strip('0123456789')):entry[i][1]-1]
+                                                        else:
+                                                            mutntseq += ref[3][orf]['nts'][entry[i-1][1]:entry[i][1]-1]
+                                                if 'insert' in curPM:
+                                                    mutntseq += curPM.split('|')[0].split('insert')[1]
+                                                elif 'Del' in curPM:
+                                                    pass
+                                                else:
+                                                    mutntseq += curPM[-1]
+                                            startcodonpos = ((orfstartpos-1)//3)+1
+                                            endcodonpos = ((orfendpos-1)//3)+1
+                                            startmod = orfstartpos % 3
+                                            endmod = orfendpos % 3
+                                            wtorfstartpos = orfstartpos
+                                            wtorfendpos = orfendpos
+                                            if startmod == 2:
+                                                wtorfstartpos = orfstartpos-1
+                                                mutntseq = ref[3][orf]['nts'][orfstartpos-2] + mutntseq
+                                            elif startmod == 0:
+                                                wtorfstartpos = orfstartpos-2
+                                                mutntseq = ref[3][orf]['nts'][orfstartpos-3:orfstartpos-1] + mutntseq
+                                            if endmod == 2:
+                                                wtorfendpos = orfendpos+1
+                                                mutntseq += ref[3][orf]['nts'][orfendpos]
+                                            elif endmod == 1:
+                                                wtorfendpos = orfendpos-2
+                                                mutntseq += ref[3][orf]['nts'][orfendpos:orfendpos+2]
+                                            wtntseq = ref[3][orf]['nts'][wtorfstartpos-1:wtorfendpos]
+                                            wtAAseq = ref[3][orf]['AAs'][startcodonpos-1:endcodonpos]
+                                            mutAAseq = ''
+                                            for i in range(0, (len(mutntseq)//3)):
+                                                try:
+                                                    mutAAseq += AAcall(mutntseq[i*3:(i*3)+3])
+                                                except:
+                                                    mutAAseq += '(fs)'
+                                            for curPM in entry:
+                                                if startcodonpos == endcodonpos:
+                                                    mutorfs[orf][curPM[0]] = f"({orf}:{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}{mutAAseq}))"
+                                                else:
+                                                    mutorfs[orf][curPM[0]] = f"({orf}:{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}-{endcodonpos}{mutAAseq}))"
 
 
-
-                            codonchecked = []
+                                        else:
+                                            curPM = entry[0][0]
+                                            if 'Del' in  curPM or 'insert' in curPM:
+                                                for sub_entry in curPM.split('|'):
+                                                    if ('('+orf+':') in sub_entry:
+                                                        mutorfs[orf][curPM] = sub_entry
+                                            else:
+                                                ORFPos = entry[0][1]
+                                                AAinfo = singletCodon(ORFPos, curPM[-1], (ref[3][orf]['nts']))
+                                                PM = '(' + orf + ":" + curPM[0] + str(ORFPos) + curPM[-1] + "(" + ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+'))'
+                                                mutorfs[orf][curPM] = PM
+                            # print(mutorfs)
+                            MNPchecked = []
                             for mut in mutations:
-                                newmutstring = mut
+                                if 'Del' or 'insert' in mut:
+                                    checkedmut = mut.split('|')[0]
+                                else:
+                                    checkedmut = mut
                                 for orf in mutorfs:
                                     try:
-                                        newmutstring += "(" + orf + "_" + mutorfs[orf]['mutstrings'][mut] + ")"
+                                        checkedmut += '|'+mutorfs[orf][mut]
                                     except:
                                         pass
-                                codonchecked.append(newmutstring)
+                                MNPchecked.append(checkedmut)
+                            mutations = MNPchecked
 
-                            mutations = codonchecked
 
                         mutations = " ".join(mutations)
 
@@ -1607,13 +1680,13 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 seq_species[mutations] = reads_count
                         else:
                             try:
-                                seq_species[str(POS)+' '+mutations+' '+str(POS+q_pars_pos)] += reads_count
+                                seq_species[str(Pos)+' '+mutations+' '+str(Pos+q_pars_pos)] += reads_count
                             except:
-                                seq_species[str(POS)+' '+mutations+' '+str(POS+q_pars_pos)] = reads_count
+                                seq_species[str(Pos)+' '+mutations+' '+str(Pos+q_pars_pos)] = reads_count
                         if args.read == 1:
                             reads_fh.write(f"{readID}\t{mutations}\n")
 
-                    for i in range(POS, POS+q_pars_pos): # update coverage
+                    for i in range(Pos, Pos+q_pars_pos): # update coverage
                         try:
                             coverage[i] += reads_count
                         except:
@@ -1661,15 +1734,15 @@ def gbSAMparse(args, ref, file): # process SAM files
                     if indel_dict[key] / sam_read_count >= args.min_samp_abund and args.wgs == 0:
                         indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key]/sam_read_count):.3f}\n")
                     elif args.wgs == 1:
-                        indelPOS = ''
+                        indelPos = ''
                         for c in key:
                             if c.isdigit():
-                                indelPOS += c
+                                indelPos += c
                             else:
                                 break
-                        indelPOS = int(indelPOS)
-                        if indel_dict[key] / coverage[indelPOS] >= args.min_samp_abund:
-                            indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key] / coverage[indelPOS]):.3f}\n")
+                        indelPos = int(indelPos)
+                        if indel_dict[key] / coverage[indelPos] >= args.min_samp_abund:
+                            indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key] / coverage[indelPos]):.3f}\n")
                 else:
                     break
             if len(indels_to_write) > 0:
@@ -1691,18 +1764,18 @@ def gbSAMparse(args, ref, file): # process SAM files
             if args.ntvar == 1:
                 ntcallv_fh = open(samp+'_nt_calls_varonly.tsv', "w")
                 ntcallv_fh.write(samp+"("+str(sam_read_count)+")\n")
-            sorted_POS = sorted(nt_call_dict_dict)
+            sorted_Pos = sorted(nt_call_dict_dict)
             if args.AAreport == 1:
                 OrfPosDict = {}
                 for orf in ref[3]:
                     orflength = 0
                     for rf in ref[3][orf]['reading frames']:
                         for i in range(rf[0],rf[1]+1):
-                            orfPOS = i-rf[0]+1+orflength
+                            orfPos = i-rf[0]+1+orflength
                             try:
-                                OrfPosDict[i].append([orf , orfPOS, ref[3][orf]['AAs'][(orfPOS-1)//3] ,(((orfPOS-1)//3)+1)])
+                                OrfPosDict[i].append([orf , orfPos, ref[3][orf]['AAs'][(orfPos-1)//3] ,(((orfPos-1)//3)+1)])
                             except:
-                                OrfPosDict[i] = [[orf , orfPOS, ref[3][orf]['AAs'][(orfPOS-1)//3] ,(((orfPOS-1)//3)+1)]]
+                                OrfPosDict[i] = [[orf , orfPos, ref[3][orf]['AAs'][(orfPos-1)//3] ,(((orfPos-1)//3)+1)]]
                         orflength += rf[1] - rf[0] + 1
 
                 ntcall_fh.write("Position\tref NT\tAAs\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
@@ -1710,37 +1783,37 @@ def gbSAMparse(args, ref, file): # process SAM files
                     ntcallv_fh.write("Position\tref NT\tAAs\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
                 consensus = {}
                 ORFmismatch = {}
-                for POS in sorted_POS:
+                for Pos in sorted_Pos:
                     try:
-                        total = coverage[POS]
+                        total = coverage[Pos]
                     except:
                         total = 0
                     if total >= (sam_read_count * args.ntabund) and total >= args.ntcover:
-                        # AAinfo = singletCodon(POS, ref[1][POS-1], ref)
-                        POS_calls = {}
-                        for key in nt_call_dict_dict[POS]:
-                            POS_calls[key] = nt_call_dict_dict[POS][key]
-                        sorted_calls = sorted(POS_calls, key=POS_calls.__getitem__, reverse=True)
+                        # AAinfo = singletCodon(Pos, ref[1][Pos-1], ref)
+                        Pos_calls = {}
+                        for key in nt_call_dict_dict[Pos]:
+                            Pos_calls[key] = nt_call_dict_dict[Pos][key]
+                        sorted_calls = sorted(Pos_calls, key=Pos_calls.__getitem__, reverse=True)
 
-                        ntcall_lines['line'][POS] =(str(POS)+"\t"+ref[1][POS-1]+"\t")
+                        ntcall_lines['line'][Pos] =(str(Pos)+"\t"+ref[1][Pos-1]+"\t")
                         try:
-                            OrfPosDict[POS]
+                            OrfPosDict[Pos]
                         except:
-                            pass # ntcall_lines['line'][POS] +=("\t")
+                            pass # ntcall_lines['line'][Pos] +=("\t")
                         else:
                             orfAAreports = []
-                            for entry in OrfPosDict[POS]:
+                            for entry in OrfPosDict[Pos]:
                                 orfAAreports.append(entry[0] +"_nt:"+ str(entry [1]) +"_AA:"+ entry[2] + str(entry[3]))
-                            ntcall_lines['line'][POS] +=(", ".join(orfAAreports))
+                            ntcall_lines['line'][Pos] +=(", ".join(orfAAreports))
 
-                        ntcall_lines['line'][POS] +=("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
-                        ntcall_lines['line'][POS] +=("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[0]]))
-                        ntcall_lines['line'][POS] +=(f"\t{(nt_call_dict_dict[POS][sorted_calls[0]]/total):.3f}")
+                        ntcall_lines['line'][Pos] +=("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']))
+                        ntcall_lines['line'][Pos] +=("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]]))
+                        ntcall_lines['line'][Pos] +=(f"\t{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}")
 
-                        consensus[POS] = sorted_calls
-                        if consensus[POS][0] != ref[1][POS-1]:
+                        consensus[Pos] = sorted_calls
+                        if consensus[Pos][0] != ref[1][Pos-1]:
                             try:
-                                for entry in OrfPosDict[POS]:
+                                for entry in OrfPosDict[Pos]:
                                     try:
                                         ORFmismatch[entry[0]]
                                     except:
@@ -1750,126 +1823,126 @@ def gbSAMparse(args, ref, file): # process SAM files
                             except:
                                 pass
 
-                for POS in sorted_POS:
+                for Pos in sorted_Pos:
                     try:
-                        total = coverage[POS]
+                        total = coverage[Pos]
                     except:
                         total = 0
 
                     try:
-                        ntcall_lines['line'][POS]
+                        ntcall_lines['line'][Pos]
                     except:
                         pass
                     else:
-                        if consensus[POS][0] != ref[1][POS-1]:
-                            ntcall_lines['variant'][POS] = 1
+                        if consensus[Pos][0] != ref[1][Pos-1]:
+                            ntcall_lines['variant'][Pos] = 1
                             try:
-                                OrfPosDict[POS]
+                                OrfPosDict[Pos]
                             except:
-                                if (nt_call_dict_dict[POS][consensus[POS][1]] > args.min_count) and (nt_call_dict_dict[POS][consensus[POS][1]] /total > args.min_samp_abund):
-                                    ntcall_lines['line'][POS] +=(f"\t\t\t{consensus[POS][1]}\t{nt_call_dict_dict[POS][consensus[POS][1]]}\t{(nt_call_dict_dict[POS][consensus[POS][1]]/total):.3f}")
-                                    if nt_call_dict_dict[POS][consensus[POS][2]] > args.min_count and nt_call_dict_dict[POS][consensus[POS][2]] /total  > args.min_samp_abund:
-                                        ntcall_lines['line'][POS] +=(f"\t\t{consensus[POS][2]}\t{nt_call_dict_dict[POS][consensus[POS][2]]}\t{(nt_call_dict_dict[POS][consensus[POS][2]]/total):.3f}")
+                                if (nt_call_dict_dict[Pos][consensus[Pos][1]] > args.min_count) and (nt_call_dict_dict[Pos][consensus[Pos][1]] /total > args.min_samp_abund):
+                                    ntcall_lines['line'][Pos] +=(f"\t\t\t{consensus[Pos][1]}\t{nt_call_dict_dict[Pos][consensus[Pos][1]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][1]]/total):.3f}")
+                                    if nt_call_dict_dict[Pos][consensus[Pos][2]] > args.min_count and nt_call_dict_dict[Pos][consensus[Pos][2]] /total  > args.min_samp_abund:
+                                        ntcall_lines['line'][Pos] +=(f"\t\t{consensus[Pos][2]}\t{nt_call_dict_dict[Pos][consensus[Pos][2]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][2]]/total):.3f}")
                             else:
                                 orfAAreports = [[],[]]
-                                for ORFentry in OrfPosDict[POS]:
-                                    OrfPOS = ORFentry[1]
+                                for ORFentry in OrfPosDict[Pos]:
+                                    OrfPos = ORFentry[1]
                                     orf = ORFentry[0]
-                                    mod = (OrfPOS)%3
+                                    mod = (OrfPos)%3
                                     codon = ['n','n','n']
 
                                     if mod == 0:
-                                        codon[2] = consensus[POS][0]
+                                        codon[2] = consensus[Pos][0]
                                         try:
-                                            codon[0] = ORFmismatch[orf][OrfPOS-2]
+                                            codon[0] = ORFmismatch[orf][OrfPos-2]
                                         except:
-                                            codon[0] = ref[3][orf]['nts'][OrfPOS-3]
+                                            codon[0] = ref[3][orf]['nts'][OrfPos-3]
                                         try:
-                                            codon[1] = ORFmismatch[orf][OrfPOS-1]
+                                            codon[1] = ORFmismatch[orf][OrfPos-1]
                                         except:
-                                            codon[1] = ref[3][orf]['nts'][OrfPOS-2]
+                                            codon[1] = ref[3][orf]['nts'][OrfPos-2]
 
                                     elif mod == 2:
-                                        codon[1] = consensus[POS][0]
+                                        codon[1] = consensus[Pos][0]
                                         try:
-                                            codon[2] = ORFmismatch[orf][OrfPOS+1]
+                                            codon[2] = ORFmismatch[orf][OrfPos+1]
                                         except:
-                                            codon[2] = ref[3][orf]['nts'][OrfPOS]
+                                            codon[2] = ref[3][orf]['nts'][OrfPos]
                                         try:
-                                            codon[0] = ORFmismatch[orf][OrfPOS-1]
+                                            codon[0] = ORFmismatch[orf][OrfPos-1]
                                         except:
-                                            codon[0] = ref[3][orf]['nts'][OrfPOS-2]
+                                            codon[0] = ref[3][orf]['nts'][OrfPos-2]
 
                                     elif mod == 1:
-                                        codon[0] = consensus[POS][0]
+                                        codon[0] = consensus[Pos][0]
                                         try:
-                                            codon[2] = ORFmismatch[orf][OrfPOS+2]
+                                            codon[2] = ORFmismatch[orf][OrfPos+2]
                                         except:
-                                            codon[2] = ref[3][orf]['nts'][OrfPOS+1]
+                                            codon[2] = ref[3][orf]['nts'][OrfPos+1]
                                         try:
-                                            codon[1] = ORFmismatch[orf][OrfPOS+1]
+                                            codon[1] = ORFmismatch[orf][OrfPos+1]
                                         except:
-                                            codon[1] = ref[3][orf]['nts'][OrfPOS]
+                                            codon[1] = ref[3][orf]['nts'][OrfPos]
                                     orfAAreports[0].append(orf+"_"+AAcall("".join(codon)))
-                                    orfAAreports[1].append(orf+"_"+singletCodon(OrfPOS, consensus[POS][0], ref[3][orf]['nts'])[1])
-                                ntcall_lines['line'][POS] +=("\t"+", ".join(orfAAreports[0])+"\t"+", ".join(orfAAreports[1]))
-                                if (nt_call_dict_dict[POS][consensus[POS][1]] > args.min_count) and (nt_call_dict_dict[POS][consensus[POS][1]] /total > args.min_samp_abund):
-                                        ntcall_lines['line'][POS] +=(f"\t{consensus[POS][1]}\t{nt_call_dict_dict[POS][consensus[POS][1]]}\t{(nt_call_dict_dict[POS][consensus[POS][1]]/total):.3f}")
+                                    orfAAreports[1].append(orf+"_"+singletCodon(OrfPos, consensus[Pos][0], ref[3][orf]['nts'])[1])
+                                ntcall_lines['line'][Pos] +=("\t"+", ".join(orfAAreports[0])+"\t"+", ".join(orfAAreports[1]))
+                                if (nt_call_dict_dict[Pos][consensus[Pos][1]] > args.min_count) and (nt_call_dict_dict[Pos][consensus[Pos][1]] /total > args.min_samp_abund):
+                                        ntcall_lines['line'][Pos] +=(f"\t{consensus[Pos][1]}\t{nt_call_dict_dict[Pos][consensus[Pos][1]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][1]]/total):.3f}")
                                         orfAAreports = []
-                                        for ORFentry in OrfPosDict[POS]:
-                                            OrfPOS = ORFentry[1]
+                                        for ORFentry in OrfPosDict[Pos]:
+                                            OrfPos = ORFentry[1]
                                             orf = ORFentry[0]
-                                            orfAAreports.append(orf+"_"+singletCodon(OrfPOS, consensus[POS][1], ref[3][orf]['nts'])[1])
-                                        ntcall_lines['line'][POS] += ("\t"+", ".join(orfAAreports))
-                                        if nt_call_dict_dict[POS][consensus[POS][2]] > args.min_count:
-                                            if nt_call_dict_dict[POS][consensus[POS][2]] /total  > args.min_samp_abund:
-                                                ntcall_lines['line'][POS] +=(f"\t{consensus[POS][2]}\t{nt_call_dict_dict[POS][consensus[POS][2]]}\t{(nt_call_dict_dict[POS][consensus[POS][2]]/total):.3f}")
+                                            orfAAreports.append(orf+"_"+singletCodon(OrfPos, consensus[Pos][1], ref[3][orf]['nts'])[1])
+                                        ntcall_lines['line'][Pos] += ("\t"+", ".join(orfAAreports))
+                                        if nt_call_dict_dict[Pos][consensus[Pos][2]] > args.min_count:
+                                            if nt_call_dict_dict[Pos][consensus[Pos][2]] /total  > args.min_samp_abund:
+                                                ntcall_lines['line'][Pos] +=(f"\t{consensus[Pos][2]}\t{nt_call_dict_dict[Pos][consensus[Pos][2]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][2]]/total):.3f}")
                                                 orfAAreports = []
-                                                for ORFentry in OrfPosDict[POS]:
-                                                    OrfPOS = ORFentry[1]
+                                                for ORFentry in OrfPosDict[Pos]:
+                                                    OrfPos = ORFentry[1]
                                                     orf = ORFentry[0]
-                                                    orfAAreports.append(orf+"_"+singletCodon(OrfPOS, consensus[POS][2], ref[3][orf]['nts'])[1])
-                                                ntcall_lines['line'][POS] += ("\t"+", ".join(orfAAreports))
+                                                    orfAAreports.append(orf+"_"+singletCodon(OrfPos, consensus[Pos][2], ref[3][orf]['nts'])[1])
+                                                ntcall_lines['line'][Pos] += ("\t"+", ".join(orfAAreports))
 
 
-                        elif (nt_call_dict_dict[POS][consensus[POS][1]] >= args.min_count) and ((nt_call_dict_dict[POS][consensus[POS][1]] / total) >= args.min_samp_abund):
-                            ntcall_lines['variant'][POS] = 1
+                        elif (nt_call_dict_dict[Pos][consensus[Pos][1]] >= args.min_count) and ((nt_call_dict_dict[Pos][consensus[Pos][1]] / total) >= args.min_samp_abund):
+                            ntcall_lines['variant'][Pos] = 1
 
-                            ntcall_lines['line'][POS] +=("\t\t")
-                            ntcall_lines['line'][POS] +=(f"\t{consensus[POS][1]}\t{nt_call_dict_dict[POS][consensus[POS][1]]}\t{(nt_call_dict_dict[POS][consensus[POS][1]]/total):.3f}")
+                            ntcall_lines['line'][Pos] +=("\t\t")
+                            ntcall_lines['line'][Pos] +=(f"\t{consensus[Pos][1]}\t{nt_call_dict_dict[Pos][consensus[Pos][1]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][1]]/total):.3f}")
 
                             try:
-                                OrfPosDict[POS]
+                                OrfPosDict[Pos]
                             except:
-                                if nt_call_dict_dict[POS][consensus[POS][2]] /total  > args.min_samp_abund:
-                                    ntcall_lines['line'][POS] +=(f"\t\t{consensus[POS][2]}\t{nt_call_dict_dict[POS][consensus[POS][2]]}\t{(nt_call_dict_dict[POS][consensus[POS][2]]/total):.3f}")
+                                if nt_call_dict_dict[Pos][consensus[Pos][2]] /total  > args.min_samp_abund:
+                                    ntcall_lines['line'][Pos] +=(f"\t\t{consensus[Pos][2]}\t{nt_call_dict_dict[Pos][consensus[Pos][2]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][2]]/total):.3f}")
                             else:
                                 orfAAreports = []
-                                for ORFentry in OrfPosDict[POS]:
-                                    OrfPOS = ORFentry[1]
+                                for ORFentry in OrfPosDict[Pos]:
+                                    OrfPos = ORFentry[1]
                                     orf = ORFentry[0]
-                                    orfAAreports.append(orf+"_"+singletCodon(OrfPOS, consensus[POS][1], ref[3][orf]['nts'])[1])
-                                ntcall_lines['line'][POS] += ("\t"+", ".join(orfAAreports))
-                                if nt_call_dict_dict[POS][consensus[POS][2]] > args.min_count:
-                                    if nt_call_dict_dict[POS][consensus[POS][2]] /total  > args.min_samp_abund:
-                                        ntcall_lines['line'][POS] +=(f"\t{consensus[POS][2]}\t{nt_call_dict_dict[POS][consensus[POS][2]]}\t{(nt_call_dict_dict[POS][consensus[POS][2]]/total):.3f}")
+                                    orfAAreports.append(orf+"_"+singletCodon(OrfPos, consensus[Pos][1], ref[3][orf]['nts'])[1])
+                                ntcall_lines['line'][Pos] += ("\t"+", ".join(orfAAreports))
+                                if nt_call_dict_dict[Pos][consensus[Pos][2]] > args.min_count:
+                                    if nt_call_dict_dict[Pos][consensus[Pos][2]] /total  > args.min_samp_abund:
+                                        ntcall_lines['line'][Pos] +=(f"\t{consensus[Pos][2]}\t{nt_call_dict_dict[Pos][consensus[Pos][2]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][2]]/total):.3f}")
                                         orfAAreports = []
-                                        for ORFentry in OrfPosDict[POS]:
-                                            OrfPOS = ORFentry[1]
+                                        for ORFentry in OrfPosDict[Pos]:
+                                            OrfPos = ORFentry[1]
                                             orf = ORFentry[0]
-                                            orfAAreports.append(orf+"_"+singletCodon(OrfPOS, consensus[POS][2], ref[3][orf]['nts'])[1])
-                                        ntcall_lines['line'][POS] += ("\t"+", ".join(orfAAreports))
+                                            orfAAreports.append(orf+"_"+singletCodon(OrfPos, consensus[Pos][2], ref[3][orf]['nts'])[1])
+                                        ntcall_lines['line'][Pos] += ("\t"+", ".join(orfAAreports))
 
-                        ntcall_lines['line'][POS] +=("\n")
-                for POS in ntcall_lines['line']:
-                    ntcall_fh.write(ntcall_lines['line'][POS])
+                        ntcall_lines['line'][Pos] +=("\n")
+                for Pos in ntcall_lines['line']:
+                    ntcall_fh.write(ntcall_lines['line'][Pos])
                     if args.ntvar == 1:
                         try:
-                            ntcall_lines['variant'][POS]
+                            ntcall_lines['variant'][Pos]
                         except:
                             pass
                         else:
-                            ntcallv_fh.write(ntcall_lines['line'][POS])
+                            ntcallv_fh.write(ntcall_lines['line'][Pos])
                 if args.ntvar == 1:
                         ntcallv_fh.close()
             else:
@@ -1877,50 +1950,50 @@ def gbSAMparse(args, ref, file): # process SAM files
                 if args.ntvar == 1:
                     ntcallv_fh.write("Position\tref NT\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
 
-                for POS in sorted_POS:
+                for Pos in sorted_Pos:
                     try:
-                        total = coverage[POS] # sum(nt_call_dict_dict[POS].values())
+                        total = coverage[Pos] # sum(nt_call_dict_dict[Pos].values())
                     except:
                         total = 0
                     if total >= (sam_read_count * args.ntabund) and total >= args.ntcover:
-                        POS_calls = {}
-                        for key in nt_call_dict_dict[POS]:
-                            POS_calls[key] = nt_call_dict_dict[POS][key]
-                        sorted_calls = sorted(POS_calls, key=POS_calls.__getitem__, reverse=True)
+                        Pos_calls = {}
+                        for key in nt_call_dict_dict[Pos]:
+                            Pos_calls[key] = nt_call_dict_dict[Pos][key]
+                        sorted_calls = sorted(Pos_calls, key=Pos_calls.__getitem__, reverse=True)
 
-                        ntcall_fh.write(str(POS)+"\t"+ref[1][POS-1])
-                        ntcall_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
-                        ntcall_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[0]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[0]]/total):.3f}")
+                        ntcall_fh.write(str(Pos)+"\t"+ref[1][Pos-1])
+                        ntcall_fh.write("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']))
+                        ntcall_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}")
 
-                        if sorted_calls[0] != ref[1][POS-1]:
+                        if sorted_calls[0] != ref[1][Pos-1]:
                             if args.ntvar == 1:
-                                ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1])
-                                ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
-                                ntcallv_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[0]]))
-                                ntcallv_fh.write(f"\t{(nt_call_dict_dict[POS][sorted_calls[0]]/total):.3f}")
-                            if (nt_call_dict_dict[POS][sorted_calls[1]] > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[1]] / total > args.min_samp_abund):
-                                ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
-                                if sorted_calls[1] != ref[1][POS-1] and args.ntvar == 1:
-                                    ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
-                                if (nt_call_dict_dict[POS][sorted_calls[2]] > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[2]] /total > args.min_samp_abund):
-                                    ntcall_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
-                                    if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
-                                        ntcallv_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
+                                ntcallv_fh.write(str(Pos)+"\t"+ref[1][Pos-1])
+                                ntcallv_fh.write("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']))
+                                ntcallv_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]]))
+                                ntcallv_fh.write(f"\t{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}")
+                            if (nt_call_dict_dict[Pos][sorted_calls[1]] > args.min_count) and (nt_call_dict_dict[Pos][sorted_calls[1]] / total > args.min_samp_abund):
+                                ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[1]]/total):.3f}")
+                                if sorted_calls[1] != ref[1][Pos-1] and args.ntvar == 1:
+                                    ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[1]]/total):.3f}")
+                                if (nt_call_dict_dict[Pos][sorted_calls[2]] > args.min_count) and (nt_call_dict_dict[Pos][sorted_calls[2]] /total > args.min_samp_abund):
+                                    ntcall_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[2]]/total):.3f}")
+                                    if sorted_calls[2] != ref[1][Pos-1] and args.ntvar == 1:
+                                        ntcallv_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[2]]/total):.3f}")
                             if args.ntvar == 1:
                                 ntcallv_fh.write("\n")
 
-                        elif (nt_call_dict_dict[POS][sorted_calls[1]] > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[1]] /total > args.min_samp_abund):
+                        elif (nt_call_dict_dict[Pos][sorted_calls[1]] > args.min_count) and (nt_call_dict_dict[Pos][sorted_calls[1]] /total > args.min_samp_abund):
                             if args.ntvar == 1:
-                                ntcallv_fh.write(str(POS)+"\t"+ref[1][POS-1])
-                                ntcallv_fh.write("\t"+str(nt_call_dict_dict[POS]['A'])+"\t"+str(nt_call_dict_dict[POS]['T'])+"\t"+str(nt_call_dict_dict[POS]['C'])+"\t"+str(nt_call_dict_dict[POS]['G'])+"\t"+str(nt_call_dict_dict[POS]['-']))
+                                ntcallv_fh.write(str(Pos)+"\t"+ref[1][Pos-1])
+                                ntcallv_fh.write("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']))
                                 ntcallv_fh.write("\t"+str(total)+"\t\t")
                                 ntcallv_fh.write(f"\t")
-                                ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
-                            ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[1]]/total):.3f}")
-                            if (nt_call_dict_dict[POS][sorted_calls[2]] > args.min_count) and (nt_call_dict_dict[POS][sorted_calls[2]] /total > args.min_samp_abund):
-                                ntcall_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
-                                if sorted_calls[2] != ref[1][POS-1] and args.ntvar == 1:
-                                    ntcallv_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[POS][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[POS][sorted_calls[2]]/total):.3f}")
+                                ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[1]]/total):.3f}")
+                            ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[1]]/total):.3f}")
+                            if (nt_call_dict_dict[Pos][sorted_calls[2]] > args.min_count) and (nt_call_dict_dict[Pos][sorted_calls[2]] /total > args.min_samp_abund):
+                                ntcall_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[2]]/total):.3f}")
+                                if sorted_calls[2] != ref[1][Pos-1] and args.ntvar == 1:
+                                    ntcallv_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[2]]/total):.3f}")
                             if args.ntvar == 1:
                                 ntcallv_fh.write("\n")
 
@@ -1959,28 +2032,28 @@ def gbSAMparse(args, ref, file): # process SAM files
                             # print(key)
                         splitcombos = key.split()
                         if len(splitcombos) == 1:
-                            coveragePOS = ''
+                            coveragePos = ''
                             for c in key:
                                 if c.isdigit():
-                                    coveragePOS += c
+                                    coveragePos += c
                                 else:
                                     break
-                            coveragepercent = combinations[key] / coverage[int(coveragePOS)]
+                            coveragepercent = combinations[key] / coverage[int(coveragePos)]
                         else:
-                            startcovPOS = ''
+                            startcovPos = ''
                             for c in splitcombos[0]:
                                 if c.isdigit():
-                                    startcovPOS += c
+                                    startcovPos += c
                                 else:
                                     break
-                            endcovPOS = ''
+                            endcovPos = ''
                             for c in splitcombos[-1]:
                                 if c.isdigit():
-                                    endcovPOS += c
+                                    endcovPos += c
                                 else:
                                     break
                             coveragevals = []
-                            for i in range(int(startcovPOS), int(endcovPOS)+1):
+                            for i in range(int(startcovPos), int(endcovPos)+1):
                                 coveragevals.append(coverage[i])
                             mincov = min(coverval for coverval in coveragevals)
                             coveragepercent = combinations[key] / mincov
@@ -1993,6 +2066,7 @@ def gbSAMparse(args, ref, file): # process SAM files
 
             # END COVAR OUT
             # print(f"End covar out for {samp}")
+    print(f'End {file} main output')
 
 def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
 
@@ -2139,23 +2213,23 @@ def dechim(args, seqs): # processing sequence dictionary to remove chimeras
                             if left_break == 'Reference' or rt_break == 'Reference':
                                 parent_pairs.append([' '.join(left_par[1:-1]), ' '.join(rt_par[1:-1])])
                             else:
-                                left_break_POS = ''
+                                left_break_Pos = ''
                                 for c in left_break:
                                     if c.isdigit():
-                                        left_break_POS += c
+                                        left_break_Pos += c
                                     else:
-                                        if left_break_POS:
+                                        if left_break_Pos:
                                             break
 
-                                rt_break_POS = ''
+                                rt_break_Pos = ''
                                 for c in rt_break:
                                     if c.isdigit():
-                                        rt_break_POS += c
+                                        rt_break_Pos += c
                                     else:
-                                        if rt_break_POS:
+                                        if rt_break_Pos:
                                             break
 
-                                if int(left_break_POS) > int(rt_break_POS):
+                                if int(left_break_Pos) > int(rt_break_Pos):
                                     parent_pairs.append([' '.join(left_par[1:-1]), ' '.join(rt_par[1:-1])])
 
         par_tot_abund = 0
