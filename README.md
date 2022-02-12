@@ -2,10 +2,10 @@
 ![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-brightgreen.svg)
 
 # SAM_Refiner
-A program for gathering variant information from a SAM formatted files.  SAM_Refiner requires a python interpreter to run.
+A program for gathering variant information from a SAM formatted files.  SAM_Refiner requires a python interpreter to run.  Please report any errors or innacurate outputs so the program may be improved.
 
 
-### BioConda Install and Use
+### BioConda Install and Useage
 
 ```bash
 $ conda install samrefiner
@@ -23,6 +23,9 @@ $ python SAM_Refiner -r reference.fasta
 SAM Refiner processes SAM formatted files generated from sequencing mapping programs such as [Bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) or [MiniMap2](https://github.com/lh3/minimap2) to collect variant information relative to a reference sequence and remove chimeric sequences.  For details on the processing and outputs, please refer to [the manuscript][link].  If you use SAM Refiner for any published work, please cite [Gregory, DA. et al.][link].
 
 ## Updates
+2022-02-12
+Improved MNP processing, added --ntcover to place a minumum coverage count for nt call output
+
 2022-01-12
 Fixed errors, improved MNP processing, added preliminary function to use gb formatted file as reference (-r)
 
@@ -50,7 +53,7 @@ Changed default --max_dist to 40
 
 
 ## In Progress
-Currently working on option to use gb format file for reference.  Mostly implemented, but not extensively tested.  Simply use -r to point to a gb file.  Likely won't work on files without CDS entries.
+Currently working on option to use gb format file for reference.  Implemented, but not extensively tested.  Simply use -r to point to a gb file.  Likely won't work on files without CDS entries.
 
 Mode for whole genome sequencing operable.  Enabled with --wgs 1, but not yet extensively tested.
 
