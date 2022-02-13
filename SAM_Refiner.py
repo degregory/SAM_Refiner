@@ -648,7 +648,7 @@ def faSAMparse(args, ref, file): # process SAM files
                                             for x in range(0, (run_length//3)+2):
                                                 AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
                                                 iProt = iProt + AA
-                                            istring = istring + '(' + ref[3][1][(iPos-1)//3:((iPos-1)//3)+2] + str(((iPos-1)//3)+1) + '-' + str(((iPos-1)//3)+2) + iProt + ')'
+                                            istring = istring + '(' + ref[3][1][(iPos-1)//3] + str(((iPos-1)//3)+1) + iProt + ')'
                                         else:
                                             if query_pos > 1:
                                                 ipSeq = query_seq[query_pos-2:query_pos+run_length+4]
@@ -779,8 +779,6 @@ def faSAMparse(args, ref, file): # process SAM files
                         else:
                             run_length = (10 * run_length) + int(C)
                     # END CIGAR PARSE
-
-
 
                     if len(mutations) == 0: # record reference counts
                         if args.wgs == 0:
@@ -1332,9 +1330,9 @@ def gbSAMparse(args, ref, file): # process SAM files
 
                                                             for x in range(0, (run_length//3)+1):
                                                                 AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
-                                                        iProt = iProt + "(" + str((orfPos//3)+1) + AA
+                                                        iProt = iProt + "(" + ref[3][orf]["AAs"][(orfPos-1)//3] + str(((orfPos-1)//3)+1) + AA
                                                     else:
-                                                        iProt += "(" + str((orfPos//3)+1) + "fs"
+                                                        iProt += "(" + str(((orfPos-1)//3)+1) + "fs"
                                                     iProt += "))"
                                                 orflength += rf[1] - rf[0] + 1
 
