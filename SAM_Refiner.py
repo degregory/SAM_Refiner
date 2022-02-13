@@ -657,7 +657,7 @@ def faSAMparse(args, ref, file): # process SAM files
                                             for x in range(0, (run_length//3)+2):
                                                 AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
                                                 iProt = iProt + AA
-                                            istring = istring + '(' + ref[3][1][(iPos-1)//3:((iPos-1)//3)+2] + str(((iPos-1)//3)+1) + '-' + str(((iPos-1)//3)+2) + iProt + ')'
+                                            istring = istring + '(' + ref[3][1][(iPos-1)//3] + str(((iPos-1)//3)+1) + iProt + ')' #  '-' + str(((iPos-1)//3)+2) +
                                     elif args.AAreport == 1:
                                         istring = istring+'(fs)'
 
