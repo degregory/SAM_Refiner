@@ -2,6 +2,7 @@
 # Writen by Devon Gregory with assistance from Christopher Bottoms
 # University of Missouri
 # Distributed under GNU GENERAL PUBLIC LICENSE v3
+# last edit on 20220307
 import os
 import sys
 import argparse
@@ -645,7 +646,7 @@ def faSAMparse(args, ref, file): # process SAM files
                                                 ipSeq = query_seq[query_pos-1:query_pos+run_length+5]
                                             else:
                                                 ipSeq = "XXX"+query_seq[query_pos+2:query_pos+run_length+5]
-                                            for x in range(0, (run_length//3)+2):
+                                            for x in range(0, (run_length//3)+1):
                                                 AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
                                                 iProt = iProt + AA
                                             istring = istring + '(' + ref[3][1][(iPos-1)//3] + str(((iPos-1)//3)+1) + iProt + ')'
@@ -1010,7 +1011,7 @@ def faSAMparse(args, ref, file): # process SAM files
                         indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key]/sam_read_count):.3f}\n")
                     elif args.wgs == 1:
                         indelPos = ''
-                        for c in key:
+                        for c in key.strip('ATCG'):
                             if c.isdigit():
                                 indelPos += c
                             else:
@@ -2544,7 +2545,7 @@ def main():
             if args.colID == '':
                 Abund_Poly_fh = open('Collected_Covariances.tsv',"w")
             else:
-                Abund_Poly_fh = open(args.colID+'_Collected_Covriances.tsv',"w")
+                Abund_Poly_fh = open(args.colID+'_Collected_Covariances.tsv',"w")
             sorted_covars = sorted(all_covars)
             Abund_Poly_fh.write("\t")
             for sampline in covar_dict_dict:
