@@ -1,8 +1,10 @@
 #!/bin/env python3
+
 # Writen by Devon Gregory with assistance from Christopher Bottoms
 # University of Missouri
 # Distributed under GNU GENERAL PUBLIC LICENSE v3
-# last edit on 20220307
+# last editted on 20220402
+
 import os
 import sys
 import argparse
@@ -13,8 +15,9 @@ from pathlib import Path
 """
 To Do:
 Improve MNP processing for frameshifts
-add AA centered output for gb reference 
+add AA centered output for gb reference
 Improve nt call and nt var processing and file writing
+use all seq in fasta for references
 Maybe add ins to nt call output
 Clean up / polish / add comments
 add --verbose --quiet options
@@ -556,6 +559,7 @@ def faSAMparse(args, ref, file): # process SAM files
     # print(ref[1])
     nt_call_dict_dict = {}
     indel_dict = {}
+    ins_nt_dict = {}
     seq_species = {}
     sam_read_count = 0
     sam_line_count = 0
@@ -663,6 +667,17 @@ def faSAMparse(args, ref, file): # process SAM files
                                         istring = istring+'(fs)'
 
                                     mutations.append(istring)
+
+                                    if args.nt_call == 1:
+                                        try:
+                                            ins_nt_dict[iPos]
+                                        except:
+                                            ins_nt_dict[iPos] = {istring : reads_count}
+                                        else:
+                                            try:
+                                                ins_nt_dict[iPos][istring] += reads_count
+                                            except:
+                                                ins_nt_dict[iPos][istring] = reads_count
 
                                     if args.indel ==  1:
                                         try:
@@ -787,13 +802,15 @@ def faSAMparse(args, ref, file): # process SAM files
                                 seq_species['Reference'] += reads_count
                             except:
                                 seq_species['Reference'] = reads_count
+                            if args.read == 1:
+                                reads_fh.write(f"{readID}\tReference\n")
                         else:
                             try:
                                 seq_species[str(Pos)+' Ref '+str(Pos+q_pars_pos)] += reads_count
                             except:
                                 seq_species[str(Pos)+' Ref '+str(Pos+q_pars_pos)] = reads_count
-                        if args.read == 1:
-                            reads_fh.write(f"{readID}\tReference\n")
+                            if args.read == 1:
+                                reads_fh.write(f"{readID}\t{str(Pos)} Reference {str(Pos+q_pars_pos)}\n")
 
                     else: # record variants and counts
                         if args.AAreport == 1 and args.AAcodonasMNP == 1:
@@ -1011,7 +1028,7 @@ def faSAMparse(args, ref, file): # process SAM files
                         indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key]/sam_read_count):.3f}\n")
                     elif args.wgs == 1:
                         indelPos = ''
-                        for c in key.strip('ATCG'):
+                        for c in key.strip('ATCGN'):
                             if c.isdigit():
                                 indelPos += c
                             else:
@@ -1048,12 +1065,42 @@ def faSAMparse(args, ref, file): # process SAM files
                     ntcallv_fh.write("Position\tref NT\tAA Pos\tref AA\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
                 consensus = {}
                 for Pos in sorted_Pos:
+
                     try:
                         total = coverage[Pos]
                     except:
                         total = 0
-                    if total >= (sam_read_count * args.ntabund) and total >= args.ntcover:
-                        # AAinfo = singletCodon(Pos, ref[1][Pos-1], ref)
+                        print(f"coverage of position {Pos} not found")
+
+                    if (total >= (sam_read_count * args.ntabund) or args.wgs == 1) and total >= args.ntcover:
+
+                        try:
+                            ins_nt_dict[Pos]
+                        except:
+                            pass
+                        else:
+                            i = 1
+                            for insertion in ins_nt_dict[Pos]:
+                                iPos = Pos+(i/1000)
+                                split_ins = insertion.split('(')
+                                i_nts = split_ins[0].split('insert')[1]
+                                i_AAs = split_ins[1]
+                                AA_pos = ((Pos-1)//3)+1
+                                iabund = ins_nt_dict[Pos][insertion]/total
+                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t{AA_pos}\t-\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
+                                ntcall_lines['line'][iPos] += f"\t{iabund:.3f}"
+                                if 'fs' in i_AAs:
+                                    ntcall_lines['line'][iPos] += f"\tfs"
+                                else:
+                                    split_AAs = i_AAs.split(str(AA_pos))
+                                    if split_AAs[0]:
+                                        ntcall_lines['line'][iPos] += f"\t{split_AAs[0]}->{split_AAs[1][:-1]}"
+                                    else:
+                                        ntcall_lines['line'][iPos] += f"\t{split_AAs[1][:-1]}"
+                                if ( ins_nt_dict[Pos][insertion] >= args.min_count) and (iabund >= args.min_samp_abund):
+                                    ntcall_lines['variant'][iPos] = 1
+                                i += 1
+
                         Pos_calls = {}
                         for key in nt_call_dict_dict[Pos]:
                             Pos_calls[key] = nt_call_dict_dict[Pos][key]
@@ -1074,6 +1121,7 @@ def faSAMparse(args, ref, file): # process SAM files
                         pass
                     else:
                         if consensus[Pos][0] != ref[1][Pos-1]:
+                            ntcall_lines['variant'][Pos] = 1
                             mod = (Pos)%3
 
                             if mod == 0:
@@ -1096,9 +1144,11 @@ def faSAMparse(args, ref, file): # process SAM files
                             ntcall_lines['line'][Pos] +=("\t\t")
 
                         if (nt_call_dict_dict[Pos][consensus[Pos][1]] >= args.min_count) and ((nt_call_dict_dict[Pos][consensus[Pos][1]] / total) >= args.min_samp_abund):
+                            ntcall_lines['variant'][Pos] = 1
                             ntcall_lines['line'][Pos] +=(f"\t{consensus[Pos][1]}\t{nt_call_dict_dict[Pos][consensus[Pos][1]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][1]]/total):.3f}"+"\t"+singletCodon(Pos, consensus[Pos][1], ref[1])[1])
 
                             if (nt_call_dict_dict[Pos][consensus[Pos][2]] >= args.min_count) and (nt_call_dict_dict[Pos][consensus[Pos][2]] / total >= args.min_samp_abund):
+                                ntcall_lines['variant'][Pos] = 1
                                 ntcall_lines['line'][Pos] +=(f"\t{consensus[Pos][2]}\t{nt_call_dict_dict[Pos][consensus[Pos][2]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][2]]/total):.3f}\t{singletCodon(Pos, consensus[Pos][2], ref[1])[1]}")
 
                 for Pos in ntcall_lines['line']:
@@ -1125,32 +1175,56 @@ def faSAMparse(args, ref, file): # process SAM files
                         total = coverage[Pos] # sum(nt_call_dict_dict[Pos].values())
                     except:
                         total = 0
-                    if total >= (sam_read_count * args.ntabund) and total >= args.ntcover:
+                        print(f"Coverage of position {Pos} not found")
+
+                    if (total >= (sam_read_count * args.ntabund) or args.wgs == 1) and total >= args.ntcover:
+
+                        try:
+                            ins_nt_dict[Pos]
+                        except:
+                            pass
+                        else:
+                            i = 1
+                            for insertion in ins_nt_dict[Pos]:
+                                iPos = Pos+(i/1000)
+                                i_nts = insertion.split('insert')[1]
+                                AA_pos = ((Pos-1)//3)+1
+                                iabund = ins_nt_dict[Pos][insertion]/total
+                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
+                                ntcall_lines['line'][iPos] += f"\t{iabund:.3f}"
+
+                                if ( ins_nt_dict[Pos][insertion] >= args.min_count) and (iabund >= args.min_samp_abund):
+                                    ntcall_lines['variant'][iPos] = 1
+                                i += 1
+
                         Pos_calls = {}
                         for key in nt_call_dict_dict[Pos]:
                             Pos_calls[key] = nt_call_dict_dict[Pos][key]
                         sorted_calls = sorted(Pos_calls, key=Pos_calls.__getitem__, reverse=True)
 
-                        ntcall_fh.write(str(Pos)+"\t"+ref[1][Pos-1])
-                        ntcall_fh.write("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']))
-                        ntcall_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}")
-
+                        ntcall_lines['line'][Pos] = str(Pos)+"\t"+ref[1][Pos-1]
+                        ntcall_lines['line'][Pos] += "\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-'])
+                        ntcall_lines['line'][Pos] += "\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}"
+                        if not ref[1][Pos-1] == sorted_calls[0]:
+                            ntcall_lines['variant'][Pos] = 1
                         if (nt_call_dict_dict[Pos][sorted_calls[1]] >= args.min_count) and (nt_call_dict_dict[Pos][sorted_calls[1]] / total) >= args.min_samp_abund:
-                            if args.ntvar == 1:
-                                ntcallv_fh.write(str(Pos)+"\t"+ref[1][Pos-1])
-                                ntcallv_fh.write("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']))
-                                ntcallv_fh.write("\t"+str(total)+"\t\t")
-                                ntcallv_fh.write(f"\t")
-                                ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[1]]/total):.3f}")
-                            ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[1]]/total):.3f}")
+                            ntcall_lines['variant'][Pos] = 1
+                            ntcall_lines['line'][Pos] += "\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[1]]/total):.3f}"
                             if (nt_call_dict_dict[Pos][sorted_calls[2]] > args.min_count) and (nt_call_dict_dict[Pos][sorted_calls[2]] /total > args.min_samp_abund):
-                                ntcall_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[2]]/total):.3f}")
-                                if args.ntvar == 1:
-                                    ntcallv_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[2]]/total):.3f}")
-                            if args.ntvar == 1:
-                                ntcallv_fh.write("\n")
+                                ntcall_lines['variant'][Pos] = 1
+                                ntcall_lines['line'][Pos] += "\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[2]]/total):.3f}"
 
-                        ntcall_fh.write("\n")
+                for Pos in ntcall_lines['line']:
+                    ntcall_fh.write(ntcall_lines['line'][Pos])
+                    ntcall_fh.write("\n")
+                    if args.ntvar == 1:
+                        try:
+                            ntcall_lines['variant'][Pos]
+                        except:
+                            pass
+                        else:
+                            ntcallv_fh.write(ntcall_lines['line'][Pos])
+                            ntcallv_fh.write("\n")
 
             ntcall_fh.close()
             if args.ntvar == 1:
@@ -1158,7 +1232,6 @@ def faSAMparse(args, ref, file): # process SAM files
             # END NT CALL OUT
             # print(f"End nt call out for {samp}")
         if args.covar == 1: # output covariants
-            testtrack = 0
             combinations = {}
             for sequence in seq_species:
                 if args.wgs == 0:
@@ -1176,14 +1249,12 @@ def faSAMparse(args, ref, file): # process SAM files
             covar_fh.write(samp+"("+str(sam_read_count)+")\n")
             covar_fh.write("Co-Variants\tCount\tAbundance\n")
             sortedcombos = sorted(combinations, key=combinations.__getitem__, reverse=True)
-            # print(sortedcombos)
             for key in sortedcombos:
                 if (combinations[key] >= args.min_count):
                     if (combinations[key] / sam_read_count >= args.min_samp_abund) and args.wgs == 0:
                         covar_fh.write(key+"\t"+str(combinations[key])+"\t"+f"{(combinations[key]/sam_read_count):.3f}\n")
                     elif args.wgs == 1:
                         coveragepercent = 0
-                            # print(key)
                         splitcombos = key.split()
                         if len(splitcombos) == 1:
                             coveragePos = ''
@@ -1192,8 +1263,6 @@ def faSAMparse(args, ref, file): # process SAM files
                                     coveragePos += c
                                 else:
                                     break
-                            # print(key)
-                            # print(coveragePos)
                             coveragepercent = combinations[key] / coverage[int(coveragePos)]
                         else:
                             startcovPos = ''
@@ -1228,6 +1297,7 @@ def gbSAMparse(args, ref, file): # process SAM files
     print(f"Starting {samp} processing")
     nt_call_dict_dict = {}
     indel_dict = {}
+    ins_nt_dict = {}
     seq_species = {}
     sam_read_count = 0
     sam_line_count = 0
@@ -1343,6 +1413,17 @@ def gbSAMparse(args, ref, file): # process SAM files
 
 
                                     mutations.append(istring)
+
+                                    if args.nt_call == 1:
+                                        try:
+                                            ins_nt_dict[iPos]
+                                        except:
+                                            ins_nt_dict[iPos] = {istring : reads_count}
+                                        else:
+                                            try:
+                                                ins_nt_dict[iPos][istring] += reads_count
+                                            except:
+                                                ins_nt_dict[iPos][istring] = reads_count
 
                                     if args.indel ==  1:
                                         try:
@@ -1478,13 +1559,15 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 seq_species['Reference'] += reads_count
                             except:
                                 seq_species['Reference'] = reads_count
+                            if args.read == 1:
+                                reads_fh.write(f"{readID}\tReference\n")
                         else:
                             try:
                                 seq_species[str(Pos)+' Ref '+str(Pos+q_pars_pos)] += reads_count
                             except:
                                 seq_species[str(Pos)+' Ref '+str(Pos+q_pars_pos)] = reads_count
-                        if args.read == 1:
-                            reads_fh.write(f"{readID}\tReference\n")
+                            if args.read == 1:
+                                reads_fh.write(f"{readID}\t{str(Pos)} Reference {str(Pos+q_pars_pos)}\n")
 
                     else: # record variants and counts
                         if args.AAreport == 1 and args.AAcodonasMNP == 1:
@@ -1675,13 +1758,15 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 seq_species[mutations] += reads_count
                             except:
                                 seq_species[mutations] = reads_count
+                            if args.read == 1:
+                                reads_fh.write(f"{readID}\t{mutations}\n")
                         else:
                             try:
                                 seq_species[str(Pos)+' '+mutations+' '+str(Pos+q_pars_pos)] += reads_count
                             except:
                                 seq_species[str(Pos)+' '+mutations+' '+str(Pos+q_pars_pos)] = reads_count
-                        if args.read == 1:
-                            reads_fh.write(f"{readID}\t{mutations}\n")
+                            if args.read == 1:
+                                reads_fh.write(f"{readID}\t{str(Pos)} {mutations} {str(Pos+q_pars_pos)}\n")
 
                     for i in range(Pos, Pos+q_pars_pos): # update coverage
                         try:
@@ -1732,7 +1817,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                         indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key]/sam_read_count):.3f}\n")
                     elif args.wgs == 1:
                         indelPos = ''
-                        for c in key:
+                        for c in key.strip('ATCGN'):
                             if c.isdigit():
                                 indelPos += c
                             else:
@@ -1785,23 +1870,45 @@ def gbSAMparse(args, ref, file): # process SAM files
                         total = coverage[Pos]
                     except:
                         total = 0
-                    if total >= (sam_read_count * args.ntabund) and total >= args.ntcover:
-                        # AAinfo = singletCodon(Pos, ref[1][Pos-1], ref)
+                        print(f"coverage of position {Pos} not found")
+
+                    if (total >= (sam_read_count * args.ntabund) or args.wgs == 1) and total >= args.ntcover:
+
+
+                        orfAAreports = []
+                        try:
+                            OrfPosDict[Pos]
+                        except:
+                            pass
+                        else:
+                            for entry in OrfPosDict[Pos]:
+                                orfAAreports.append(entry[0] +"_nt:"+ str(entry [1]) +"_AA:"+ entry[2] + str(entry[3]))
+
+                        try:
+                            ins_nt_dict[Pos]
+                        except:
+                            pass
+                        else:
+                            i = 1
+                            for insertion in ins_nt_dict[Pos]:
+                                iPos = Pos+(i/1000)
+                                split_ins = insertion.split('|')
+                                i_nts = split_ins[0].split('insert')[1]
+                                i_AAs = split_ins[1]
+                                AA_pos = ", ".join(orfAAreports)
+                                iabund = ins_nt_dict[Pos][insertion]/total
+                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t{AA_pos}\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
+                                ntcall_lines['line'][iPos] += f"\t{iabund:.3f}\t{i_AAs}"
+                                ntcall_lines['line'][iPos] += "\n"
+                                i += 1
+
                         Pos_calls = {}
                         for key in nt_call_dict_dict[Pos]:
                             Pos_calls[key] = nt_call_dict_dict[Pos][key]
                         sorted_calls = sorted(Pos_calls, key=Pos_calls.__getitem__, reverse=True)
 
                         ntcall_lines['line'][Pos] =(str(Pos)+"\t"+ref[1][Pos-1]+"\t")
-                        try:
-                            OrfPosDict[Pos]
-                        except:
-                            pass # ntcall_lines['line'][Pos] +=("\t")
-                        else:
-                            orfAAreports = []
-                            for entry in OrfPosDict[Pos]:
-                                orfAAreports.append(entry[0] +"_nt:"+ str(entry [1]) +"_AA:"+ entry[2] + str(entry[3]))
-                            ntcall_lines['line'][Pos] +=(", ".join(orfAAreports))
+                        ntcall_lines['line'][Pos] +=(", ".join(orfAAreports))
 
                         ntcall_lines['line'][Pos] +=("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']))
                         ntcall_lines['line'][Pos] +=("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]]))
@@ -1949,60 +2056,58 @@ def gbSAMparse(args, ref, file): # process SAM files
 
                 for Pos in sorted_Pos:
                     try:
-                        total = coverage[Pos] # sum(nt_call_dict_dict[Pos].values())
+                        total = coverage[Pos]
                     except:
                         total = 0
-                    if total >= (sam_read_count * args.ntabund) and total >= args.ntcover:
+                        print(f"coverage of position {Pos} not found")
+
+                    if (total >= (sam_read_count * args.ntabund) or args.wgs == 1) and total >= args.ntcover:
+
+                        try:
+                            ins_nt_dict[Pos]
+                        except:
+                            pass
+                        else:
+                            i = 1
+                            for insertion in ins_nt_dict[Pos]:
+                                iPos = Pos+(i/1000)
+                                i_nts = insertion.split('insert')[1]
+                                iabund = ins_nt_dict[Pos][insertion]/total
+                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
+                                ntcall_lines['line'][iPos] += f"\t{iabund:.3f}"
+                                ntcall_lines['line'][iPos] += "\n"
+                                i += 1
+                                
                         Pos_calls = {}
                         for key in nt_call_dict_dict[Pos]:
                             Pos_calls[key] = nt_call_dict_dict[Pos][key]
                         sorted_calls = sorted(Pos_calls, key=Pos_calls.__getitem__, reverse=True)
 
-                        ntcall_fh.write(str(Pos)+"\t"+ref[1][Pos-1])
-                        ntcall_fh.write("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']))
-                        ntcall_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}")
+                        ntcall_lines['line'][Pos] = str(Pos)+"\t"+ref[1][Pos-1]
+                        ntcall_lines['line'][Pos] += "\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-'])
+                        ntcall_lines['line'][Pos] += "\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}"
 
-                        if sorted_calls[0] != ref[1][Pos-1]:
-                            if args.ntvar == 1:
-                                ntcallv_fh.write(str(Pos)+"\t"+ref[1][Pos-1])
-                                ntcallv_fh.write("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']))
-                                ntcallv_fh.write("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]]))
-                                ntcallv_fh.write(f"\t{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}")
-                            if (nt_call_dict_dict[Pos][sorted_calls[1]] > args.min_count) and (nt_call_dict_dict[Pos][sorted_calls[1]] / total > args.min_samp_abund):
-                                ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[1]]/total):.3f}")
-                                if sorted_calls[1] != ref[1][Pos-1] and args.ntvar == 1:
-                                    ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[1]]/total):.3f}")
-                                if (nt_call_dict_dict[Pos][sorted_calls[2]] > args.min_count) and (nt_call_dict_dict[Pos][sorted_calls[2]] /total > args.min_samp_abund):
-                                    ntcall_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[2]]/total):.3f}")
-                                    if sorted_calls[2] != ref[1][Pos-1] and args.ntvar == 1:
-                                        ntcallv_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[2]]/total):.3f}")
-                            if args.ntvar == 1:
-                                ntcallv_fh.write("\n")
-
-                        elif (nt_call_dict_dict[Pos][sorted_calls[1]] > args.min_count) and (nt_call_dict_dict[Pos][sorted_calls[1]] /total > args.min_samp_abund):
-                            if args.ntvar == 1:
-                                ntcallv_fh.write(str(Pos)+"\t"+ref[1][Pos-1])
-                                ntcallv_fh.write("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']))
-                                ntcallv_fh.write("\t"+str(total)+"\t\t")
-                                ntcallv_fh.write(f"\t")
-                                ntcallv_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[1]]/total):.3f}")
-                            ntcall_fh.write("\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[1]]/total):.3f}")
+                        if (nt_call_dict_dict[Pos][sorted_calls[1]] > args.min_count) and (nt_call_dict_dict[Pos][sorted_calls[1]] /total > args.min_samp_abund):
+                            ntcall_lines['line'][Pos] += "\t"+sorted_calls[1]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[1]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[1]]/total):.3f}"
                             if (nt_call_dict_dict[Pos][sorted_calls[2]] > args.min_count) and (nt_call_dict_dict[Pos][sorted_calls[2]] /total > args.min_samp_abund):
-                                ntcall_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[2]]/total):.3f}")
-                                if sorted_calls[2] != ref[1][Pos-1] and args.ntvar == 1:
-                                    ntcallv_fh.write("\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[2]]/total):.3f}")
-                            if args.ntvar == 1:
-                                ntcallv_fh.write("\n")
+                                ntcall_lines['line'][Pos] += "\t"+sorted_calls[2]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[2]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[2]]/total):.3f}"
 
-                        ntcall_fh.write("\n")
-
+                        ntcall_lines['line'][Pos] += "\n"
+                for Pos in ntcall_lines['line']:
+                    ntcall_fh.write(ntcall_lines['line'][Pos])
+                    if args.ntvar == 1:
+                        try:
+                            ntcall_lines['variant'][Pos]
+                        except:
+                            pass
+                        else:
+                            ntcallv_fh.write(ntcall_lines['line'][Pos])
             ntcall_fh.close()
             if args.ntvar == 1:
                 ntcallv_fh.close()
             # END NT CALL OUT
             # print(f"End nt call out for {samp}")
         if args.covar == 1: # output covariants
-            testtrack = 0
             combinations = {}
             for sequence in seq_species:
                 if args.wgs == 0:
@@ -2030,7 +2135,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                         splitcombos = key.split()
                         if len(splitcombos) == 1:
                             coveragePos = ''
-                            for c in key:
+                            for c in key.strip('ATGC'):
                                 if c.isdigit():
                                     coveragePos += c
                                 else:
@@ -2038,13 +2143,13 @@ def gbSAMparse(args, ref, file): # process SAM files
                             coveragepercent = combinations[key] / coverage[int(coveragePos)]
                         else:
                             startcovPos = ''
-                            for c in splitcombos[0]:
+                            for c in splitcombos[0].strip('ATGC'):
                                 if c.isdigit():
                                     startcovPos += c
                                 else:
                                     break
                             endcovPos = ''
-                            for c in splitcombos[-1]:
+                            for c in splitcombos[-1].strip('ATGC'):
                                 if c.isdigit():
                                     endcovPos += c
                                 else:
