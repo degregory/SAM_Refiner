@@ -16,9 +16,7 @@ from pathlib import Path
 To Do:
 Improve MNP processing for frameshifts
 add AA centered output for gb reference
-Improve nt call and nt var processing and file writing
 use all seq in fasta for references
-Maybe add ins to nt call output
 Clean up / polish / add comments
 add --verbose --quiet options
 """
@@ -806,9 +804,9 @@ def faSAMparse(args, ref, file): # process SAM files
                                 reads_fh.write(f"{readID}\tReference\n")
                         else:
                             try:
-                                seq_species[str(Pos)+' Ref '+str(Pos+q_pars_pos)] += reads_count
+                                seq_species[str(Pos)+' Reference '+str(Pos+q_pars_pos)] += reads_count
                             except:
-                                seq_species[str(Pos)+' Ref '+str(Pos+q_pars_pos)] = reads_count
+                                seq_species[str(Pos)+' Reference '+str(Pos+q_pars_pos)] = reads_count
                             if args.read == 1:
                                 reads_fh.write(f"{readID}\t{str(Pos)} Reference {str(Pos+q_pars_pos)}\n")
 
@@ -977,7 +975,7 @@ def faSAMparse(args, ref, file): # process SAM files
                             if args.read == 1:
                                 reads_fh.write(f"{readID}\t{str(Pos)} {mutations} {str(Pos+q_pars_pos)}\n")
 
-                    for i in range(Pos, Pos+q_pars_pos): # update coverage
+                    for i in range(Pos, Pos+q_pars_pos+1): # update coverage
                         try:
                             coverage[i] += reads_count
                         except:
@@ -987,7 +985,6 @@ def faSAMparse(args, ref, file): # process SAM files
     sam_fh.close()
     # END SAM LINES
     print(f"End SAM parse for {samp}")
-    # print(coverage)
 
     if sam_read_count == 0:
         print(f"No Reads for {samp}")
@@ -1002,16 +999,17 @@ def faSAMparse(args, ref, file): # process SAM files
             sorted_seq = sorted(seq_species, key=seq_species.__getitem__, reverse=True)
             for key in sorted_seq:
                 if seq_species[key] >= args.min_count:
-                    if (seq_species[key] / sam_read_count >= args.min_samp_abund) and args.wgs == 0:
-                        seq_fh.write(f"{key}\t{seq_species[key]}\t{(seq_species[key]/sam_read_count):.3f}\n")
+                    if args.wgs == 0:
+                        abund = seq_species[key] / sam_read_count
                     elif args.wgs == 1:
                         splitseqs = key.split()
                         cov = []
-                        for x in range(int(splitseqs[0]), int(splitseqs[-1])):
+                        for x in range(int(splitseqs[0]), int(splitseqs[-1])+1):
                             cov.append(coverage[x])
                         min_cov = min(cov)
-                        if (seq_species[key]/min_cov >= args.min_samp_abund):
-                            seq_fh.write(f"{key}\t{seq_species[key]}\t{(seq_species[key]/min_cov):.3f}\n")
+                        abund = seq_species[key]/min_cov
+                    if (abund >= args.min_samp_abund):
+                            seq_fh.write(f"{key}\t{seq_species[key]}\t{abund:.3f}\n")
                 else:
                     break
 
@@ -1024,8 +1022,8 @@ def faSAMparse(args, ref, file): # process SAM files
             indels_to_write = []
             for key in sorted_indels:
                 if indel_dict[key] >= args.min_count:
-                    if indel_dict[key] / sam_read_count >= args.min_samp_abund and args.wgs == 0:
-                        indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key]/sam_read_count):.3f}\n")
+                    if args.wgs == 0:
+                        abund = indel_dict[key] / sam_read_count
                     elif args.wgs == 1:
                         indelPos = ''
                         for c in key.strip('ATCGN'):
@@ -1033,9 +1031,9 @@ def faSAMparse(args, ref, file): # process SAM files
                                 indelPos += c
                             else:
                                 break
-                        indelPos = int(indelPos)
-                        if indel_dict[key] / coverage[indelPos] >= args.min_samp_abund:
-                            indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key] / coverage[indelPos]):.3f}\n")
+                        abund = indel_dict[key] / coverage[int(indelPos)]
+                    if abund >= args.min_samp_abund:
+                        indels_to_write.append(f"{key}\t{indel_dict[key]}\t{abund:.3f}\n")
                 else:
                     break
             if len(indels_to_write) > 0:
@@ -1238,55 +1236,54 @@ def faSAMparse(args, ref, file): # process SAM files
                     singles = sequence.split()
                 else:
                     singles = (sequence.split())[1:-1]
-                if len(singles) <= args.max_dist and singles[0] != 'Ref':
+                if len(singles) <= args.max_dist and singles[0] != 'Reference':
                     for combo in getCombos(singles, args.max_covar):
                         if not combo in combinations:
                             combinations[combo] = seq_species[sequence]
                         else:
                             combinations[combo] += seq_species[sequence]
 
-            covar_fh = open(samp+'_covars.tsv', "w")
-            covar_fh.write(samp+"("+str(sam_read_count)+")\n")
-            covar_fh.write("Co-Variants\tCount\tAbundance\n")
-            sortedcombos = sorted(combinations, key=combinations.__getitem__, reverse=True)
-            for key in sortedcombos:
-                if (combinations[key] >= args.min_count):
-                    if (combinations[key] / sam_read_count >= args.min_samp_abund) and args.wgs == 0:
-                        covar_fh.write(key+"\t"+str(combinations[key])+"\t"+f"{(combinations[key]/sam_read_count):.3f}\n")
-                    elif args.wgs == 1:
-                        coveragepercent = 0
-                        splitcombos = key.split()
-                        if len(splitcombos) == 1:
-                            coveragePos = ''
-                            for c in key.strip('ATGC'):
-                                if c.isdigit():
-                                    coveragePos += c
-                                else:
-                                    break
-                            coveragepercent = combinations[key] / coverage[int(coveragePos)]
-                        else:
-                            startcovPos = ''
-                            for c in splitcombos[0].strip('ATGC'):
-                                if c.isdigit():
-                                    startcovPos += c
-                                else:
-                                    break
-                            endcovPos = ''
-                            for c in splitcombos[-1].strip('ATGC'):
-                                if c.isdigit():
-                                    endcovPos += c
-                                else:
-                                    break
-                            coveragevals = []
-                            for i in range(int(startcovPos), int(endcovPos)+1):
-                                coveragevals.append(coverage[i])
-                            mincov = min(coverval for coverval in coveragevals)
-                            coveragepercent = combinations[key] / mincov
-                        if coveragepercent >= args.min_samp_abund:
-                            covar_fh.write(f"{key}\t{combinations[key]}\t{coveragepercent:.3f}\n")
-
-                    # \t{coveragepercent:.3f}
-            covar_fh.close()
+            if max(combinations.values()) >= args.min_count:
+                covar_fh = open(samp+'_covars.tsv', "w")
+                covar_fh.write(samp+"("+str(sam_read_count)+")\n")
+                covar_fh.write("Co-Variants\tCount\tAbundance\n")
+                sortedcombos = sorted(combinations, key=combinations.__getitem__, reverse=True)
+                for key in sortedcombos:
+                    if combinations[key] >= args.min_count:
+                        if args.wgs == 0:
+                            abund = combinations[key] / sam_read_count
+                        elif args.wgs == 1:
+                            splitcombos = key.split()
+                            if len(splitcombos) == 1:
+                                coveragePos = ''
+                                for c in key.strip('ATGCN'):
+                                    if c.isdigit():
+                                        coveragePos += c
+                                    else:
+                                        break
+                                abund = combinations[key] / coverage[int(coveragePos)]
+                            else:
+                                startcovPos = ''
+                                for c in splitcombos[0].strip('ATGCN'):
+                                    if c.isdigit():
+                                        startcovPos += c
+                                    else:
+                                        break
+                                endcovPos = ''
+                                for c in splitcombos[-1].strip('ATGCN'):
+                                    if c.isdigit():
+                                        endcovPos += c
+                                    else:
+                                        break
+                                coveragevals = []
+                                for i in range(int(startcovPos), int(endcovPos)+1):
+                                    coveragevals.append(coverage[i])
+                                abund = combinations[key] / min(coveragevals)
+                        if abund >= args.min_samp_abund:
+                            covar_fh.write(f"{key}\t{combinations[key]}\t{abund:.3f}\n")
+                    else:
+                        break
+                covar_fh.close()
             # END COVAR OUT
             # print(f"End covar out for {samp}")
     print(f'End {file} main output')
@@ -1563,9 +1560,9 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 reads_fh.write(f"{readID}\tReference\n")
                         else:
                             try:
-                                seq_species[str(Pos)+' Ref '+str(Pos+q_pars_pos)] += reads_count
+                                seq_species[str(Pos)+' Reference '+str(Pos+q_pars_pos)] += reads_count
                             except:
-                                seq_species[str(Pos)+' Ref '+str(Pos+q_pars_pos)] = reads_count
+                                seq_species[str(Pos)+' Reference '+str(Pos+q_pars_pos)] = reads_count
                             if args.read == 1:
                                 reads_fh.write(f"{readID}\t{str(Pos)} Reference {str(Pos+q_pars_pos)}\n")
 
@@ -1768,7 +1765,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                             if args.read == 1:
                                 reads_fh.write(f"{readID}\t{str(Pos)} {mutations} {str(Pos+q_pars_pos)}\n")
 
-                    for i in range(Pos, Pos+q_pars_pos): # update coverage
+                    for i in range(Pos, Pos+q_pars_pos+1): # update coverage
                         try:
                             coverage[i] += reads_count
                         except:
@@ -1791,16 +1788,16 @@ def gbSAMparse(args, ref, file): # process SAM files
             sorted_seq = sorted(seq_species, key=seq_species.__getitem__, reverse=True)
             for key in sorted_seq:
                 if seq_species[key] >= args.min_count:
-                    if (seq_species[key] / sam_read_count >= args.min_samp_abund) and args.wgs == 0:
-                        seq_fh.write(f"{key}\t{seq_species[key]}\t{(seq_species[key]/sam_read_count):.3f}\n")
+                    if args.wgs == 0:
+                        abund = seq_species[key]/sam_read_count
                     elif args.wgs == 1:
                         splitseqs = key.split()
                         cov = []
                         for x in range(int(splitseqs[0]), int(splitseqs[-1])):
                             cov.append(coverage[x])
-                        min_cov = min(cov)
-                        if (seq_species[key]/min_cov >= args.min_samp_abund):
-                            seq_fh.write(f"{key}\t{seq_species[key]}\t{(seq_species[key]/min_cov):.3f}\n")
+                        abund = seq_species[key] / min(cov)
+                    if (abund >= args.min_samp_abund):
+                        seq_fh.write(f"{key}\t{seq_species[key]}\t{abund:.3f}\n")
                 else:
                     break
 
@@ -1813,8 +1810,8 @@ def gbSAMparse(args, ref, file): # process SAM files
             indels_to_write = []
             for key in sorted_indels:
                 if indel_dict[key] >= args.min_count:
-                    if indel_dict[key] / sam_read_count >= args.min_samp_abund and args.wgs == 0:
-                        indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key]/sam_read_count):.3f}\n")
+                    if args.wgs == 0:
+                        abund = indel_dict[key] / sam_read_count
                     elif args.wgs == 1:
                         indelPos = ''
                         for c in key.strip('ATCGN'):
@@ -1822,9 +1819,9 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 indelPos += c
                             else:
                                 break
-                        indelPos = int(indelPos)
-                        if indel_dict[key] / coverage[indelPos] >= args.min_samp_abund:
-                            indels_to_write.append(f"{key}\t{indel_dict[key]}\t{(indel_dict[key] / coverage[indelPos]):.3f}\n")
+                        abund = indel_dict[key] / coverage[int(indelPos)]
+                    if abund >= args.min_samp_abund:
+                        indels_to_write.append(f"{key}\t{indel_dict[key]}\t{abund:.3f}\n")
                 else:
                     break
             if len(indels_to_write) > 0:
@@ -1894,7 +1891,10 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 iPos = Pos+(i/1000)
                                 split_ins = insertion.split('|')
                                 i_nts = split_ins[0].split('insert')[1]
-                                i_AAs = split_ins[1]
+                                try:
+                                    i_AAs = split_ins[1]
+                                except:
+                                    i_AAs = ''
                                 AA_pos = ", ".join(orfAAreports)
                                 iabund = ins_nt_dict[Pos][insertion]/total
                                 ntcall_lines['line'][iPos] = f"{Pos}\t-\t{AA_pos}\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
@@ -2114,56 +2114,55 @@ def gbSAMparse(args, ref, file): # process SAM files
                     singles = sequence.split()
                 else:
                     singles = (sequence.split())[1:-1]
-                if len(singles) <= args.max_dist and singles[0] != 'Ref':
+                if len(singles) <= args.max_dist and singles[0] != 'Reference':
                     for combo in getCombos(singles, args.max_covar):
                         if not combo in combinations:
                             combinations[combo] = seq_species[sequence]
                         else:
                             combinations[combo] += seq_species[sequence]
 
-            covar_fh = open(samp+'_covars.tsv', "w")
-            covar_fh.write(samp+"("+str(sam_read_count)+")\n")
-            covar_fh.write("Co-Variants\tCount\tAbundance\n")
-            sortedcombos = sorted(combinations, key=combinations.__getitem__, reverse=True)
-            for key in sortedcombos:
-                if (combinations[key] >= args.min_count):
-                    if (combinations[key] / sam_read_count >= args.min_samp_abund) and args.wgs == 0:
-                        covar_fh.write(key+"\t"+str(combinations[key])+"\t"+f"{(combinations[key]/sam_read_count):.3f}\n")
-                    elif args.wgs == 1:
-                        coveragepercent = 0
-                            # print(key)
-                        splitcombos = key.split()
-                        if len(splitcombos) == 1:
-                            coveragePos = ''
-                            for c in key.strip('ATGC'):
-                                if c.isdigit():
-                                    coveragePos += c
-                                else:
-                                    break
-                            coveragepercent = combinations[key] / coverage[int(coveragePos)]
-                        else:
-                            startcovPos = ''
-                            for c in splitcombos[0].strip('ATGC'):
-                                if c.isdigit():
-                                    startcovPos += c
-                                else:
-                                    break
-                            endcovPos = ''
-                            for c in splitcombos[-1].strip('ATGC'):
-                                if c.isdigit():
-                                    endcovPos += c
-                                else:
-                                    break
-                            coveragevals = []
-                            for i in range(int(startcovPos), int(endcovPos)+1):
-                                coveragevals.append(coverage[i])
-                            mincov = min(coverval for coverval in coveragevals)
-                            coveragepercent = combinations[key] / mincov
-                        if coveragepercent >= args.min_samp_abund:
-                            covar_fh.write(f"{key}\t{combinations[key]}\t{coveragepercent:.3f}\n")
+            if max(combinations.values()) >= args.min_count:
+                covar_fh = open(samp+'_covars.tsv', "w")
+                covar_fh.write(samp+"("+str(sam_read_count)+")\n")
+                covar_fh.write("Co-Variants\tCount\tAbundance\n")
+                sortedcombos = sorted(combinations, key=combinations.__getitem__, reverse=True)
+                for key in sortedcombos:
+                    if combinations[key] >= args.min_count:
+                        if args.wgs == 0:
+                            abund = combinations[key] / sam_read_count 
+                        elif args.wgs == 1:
+                            splitcombos = key.split()
+                            if len(splitcombos) == 1:
+                                coveragePos = ''
+                                for c in key.strip('ATGCN'):
+                                    if c.isdigit():
+                                        coveragePos += c
+                                    else:
+                                        break
+                                abund = combinations[key] / coverage[int(coveragePos)]
+                            else:
+                                startcovPos = ''
+                                for c in splitcombos[0].strip('ATGCN'):
+                                    if c.isdigit():
+                                        startcovPos += c
+                                    else:
+                                        break
+                                endcovPos = ''
+                                for c in splitcombos[-1].strip('ATGCN'):
+                                    if c.isdigit():
+                                        endcovPos += c
+                                    else:
+                                        break
+                                coveragevals = []
+                                for i in range(int(startcovPos), int(endcovPos)+1):
+                                    coveragevals.append(coverage[i])
+                                abundance = combinations[key] / min(coveragevals)
+                        if abund >= args.min_samp_abund:
+                            covar_fh.write(f"{key}\t{combinations[key]}\t{abund:.3f}\n")
+                    else:
+                        break
 
-                    # \t{coveragepercent:.3f}
-            covar_fh.close()
+                covar_fh.close()
 
 
             # END COVAR OUT
