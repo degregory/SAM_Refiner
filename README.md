@@ -23,6 +23,9 @@ $ python SAM_Refiner -r reference.fasta
 SAM Refiner processes SAM formatted files generated from sequencing mapping programs such as [Bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) or [MiniMap2](https://github.com/lh3/minimap2) to collect variant information relative to a reference sequence and remove chimeric sequences.  For details on the processing and outputs, please refer to [the manuscript][link].  If you use SAM Refiner for any published work, please cite [Gregory, DA. et al.][link].
 
 ## Updates
+2022-04-03
+Added insertion reporting to nt call output.  Added amino acid centered outputs for unique seqs and covars when using .gb files for reference (--AAcentered 1).  Added a tile based method for calculating abundance for covariants in --wgs mode (more computaitonally intensive, more accurate).
+
 2022-02-12
 Improved MNP processing, added --ntcover to place a minumum coverage count for nt call output
 
