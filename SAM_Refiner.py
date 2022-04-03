@@ -15,7 +15,6 @@ from pathlib import Path
 """
 To Do:
 Improve MNP processing for frameshifts
-add AA centered output for gb reference
 use all seq in fasta for references
 Clean up / polish / add comments
 add --verbose --quiet options
@@ -91,6 +90,13 @@ def arg_parser():
         help='Maximum number of variances from the reference to be reported in covars (default: 8)'
     )
     parser.add_argument(
+        '--covar_tile_coverage',
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help='Enable/Disable (1/0) using tiles covering positions instead of minimum nt coverage to calculate abundance of covariants (--covar_tile_coverage), require --wgs 1'
+    )
+    parser.add_argument(
         '--AAreport',
         type=int,
         default=1,
@@ -103,6 +109,13 @@ def arg_parser():
         default=1,
         choices=[0, 1],
         help='Enable/Disable (1/0) reporting multiple nt changes in a single codon as one polymorphism, default enabled (--AAcodonasMNP 1), requires AAreport enabled'
+    )
+    parser.add_argument(
+        '--AAcentered',
+        type=int,
+        default=1,
+        choices=[0, 1],
+        help='Enable/Disable (1/0) amino acid centered seq and covar outputs for .gb processing (--AAcentered 1), requires AAreport enabled'
     )
     parser.add_argument(
         '--chim_in_abund',
@@ -232,7 +245,7 @@ def arg_parser():
     parser.add_argument(
         '--mp',
         type=int,
-        default=4,
+        default=3,
         choices=range(1,21),
         help='set number of processes SAM Refiner will run in parallel, default = 4 (--mp 4)'
     )
@@ -353,7 +366,6 @@ def get_ref(args): # get the reference ID and sequence from the FASTA file.  Wil
             ORFS = {}
             rfs = []
             trans = 0
-            gene = ""
             nts = ""
             for line in ref:
                 if collect == "Null":
@@ -377,52 +389,47 @@ def get_ref(args): # get the reference ID and sequence from the FASTA file.  Wil
                 elif collect == "CDS":
                     if "gene=" in line:
                         gene = line.split("=")[1].strip('"\n\r')
-                        geneID = gene
-                        n = 1
-                        if gene in ORFS:
-                            newgene = gene + '.' + str(n)
-                            while newgene in ORFS:
-                                n = n + 1
-                                newgene = gene + '.' + str(n)
-                            geneID = newgene
-
-                        ORFS[geneID] = { "reading frames" : rfs
-
-                                        }
-                        rfs = []
+                    elif "product=" in line:
+                        product = line.split("=")[1].strip('"\n\r')
+                        
                     elif "translation" in line:
                         try:
-                            ORFS[geneID]["AAs"] = line.strip("\r\n").split('"')[1]
+                            gene
                         except:
-                            gene = 'gene'
-                            geneID = gene
-                            n = 1
-                            if gene in ORFS:
-                                newgene = gene + '.' + str(n)
-                                while newgene in ORFS:
-                                    n = n + 1
-                                    newgene = gene + '.' + str(n)
-                                geneID = newgene
-                            ORFS[geneID] = { "reading frames" : rfs
-                                        }
-                            rfs = []
-                            ORFS[geneID]["AAs"] = line.strip("\r\n").split('"')[1]
+                            gene = 'unlabeled'
+                        try:
+                            product
+                        except:
+                            product = gene
+                            
+                        orfID = product.replace(' ', '_')
+                        n = 1
+                        if orfID in ORFS:
+                            newID = orfID + '.' + str(n)
+                            while newID in ORFS:
+                                n += 1
+                                newgene = orfID + '.' + str(n)
+                            orfID = newgene
+                        ORFS[orfID] = { "reading frames" : rfs
+                                    }
+                        rfs = []
+                        ORFS[orfID]["AAs"] = line.strip("\r\n").split('"')[1]
 
                         if not line.strip("\r\n")[-1] == '"':
                             trans = 1
                         else:
-                            ORFS[geneID]["AAs"] += "*"
+                            ORFS[orfID]["AAs"] += "*"
                             gene = ""
-                            geneID = ""
+                            orfID = ""
                             collect = "Null"
 
                     elif trans == 1:
-                        ORFS[geneID]["AAs"] = ORFS[geneID]["AAs"] + line.strip(' "\n\r')
+                        ORFS[orfID]["AAs"] = ORFS[orfID]["AAs"] + line.strip(' "\n\r')
                         if line.strip("\r\n")[-1] == '"':
-                            ORFS[geneID]["AAs"] += "*"
+                            ORFS[orfID]["AAs"] += "*"
                             trans = 0
                             gene = ""
-                            geneID = ""
+                            orfID = ""
                             collect = "Null"
 
 
@@ -549,6 +556,133 @@ def getCombos(qlist, clen): # returns combinations of single polymorphisms in a 
         for comb in itertools.combinations(qlist, N):
             combos.append(' '.join(comb))
     return(combos)
+
+def printUniqueSeq(samp, sam_read_count, seq_species, coverage, args):
+    seq_fh = open(samp+'_unique_seqs.tsv', "w")
+    seq_fh.write(samp+"("+str(sam_read_count)+")\n")
+    seq_fh.write("Unique Sequence\tCount\tAbundance\n")
+
+    sorted_seq = sorted(seq_species, key=seq_species.__getitem__, reverse=True)
+    for key in sorted_seq:
+        if seq_species[key] >= args.min_count:
+            if args.wgs == 0:
+                abund = seq_species[key] / sam_read_count
+            elif args.wgs == 1:
+                splitseqs = key.split()
+                cov = []
+                for x in range(int(splitseqs[0]), int(splitseqs[-1])+1):
+                    cov.append(coverage[x])
+                abund = seq_species[key] / min(cov)
+            if (abund >= args.min_samp_abund):
+                seq_fh.write(f"{key}\t{seq_species[key]}\t{abund:.3f}\n")
+        else:
+            break
+
+    seq_fh.close()
+
+def printInDels(samp, sam_read_count, indel_dict, coverage, args):
+    sorted_indels = sorted(indel_dict, key=indel_dict.__getitem__, reverse=True)
+    indels_to_write = []
+    for key in sorted_indels:
+        if indel_dict[key] >= args.min_count:
+            if args.wgs == 0:
+                abund = indel_dict[key] / sam_read_count
+            elif args.wgs == 1:
+                indelPos = ''
+                for c in key.strip('ATCGN'):
+                    if c.isdigit():
+                        indelPos += c
+                    else:
+                        break
+                abund = indel_dict[key] / coverage[int(indelPos)]
+            if abund >= args.min_samp_abund:
+                indels_to_write.append(f"{key}\t{indel_dict[key]}\t{abund:.3f}\n")
+        else:
+            break
+    if len(indels_to_write) > 0:
+        indel_fh = open(samp+'_indels.tsv', "w")
+        indel_fh.write(samp+"("+str(sam_read_count)+")\n")
+        indel_fh.write("Indel\tCount\tAbundance\n")
+        for indel_entry in indels_to_write:
+            indel_fh.write(indel_entry)
+        indel_fh.close()
+
+def printCovars(samp, sam_read_count, seq_species, coverage, args, aa_centered):
+    combinations = {}
+    tiles = {}
+    for sequence in seq_species:
+        if args.wgs == 0:
+            singles = sequence.split()
+        else:
+            if args.covar_tile_coverage == 1:
+                try:
+                    tiles[sequence.split()[0]]
+                except:
+                    tiles[sequence.split()[0]] = {sequence.split()[-1] : seq_species[sequence]}
+                else:
+                    try:
+                        tiles[sequence.split()[0]][sequence.split()[-1]] += seq_species[sequence]
+                    except:
+                        tiles[sequence.split()[0]][sequence.split()[-1]] = seq_species[sequence]
+            singles = sequence.split()[1:-1]
+        if len(singles) <= args.max_dist and singles[0] != 'Reference':
+            for combo in getCombos(singles, args.max_covar):
+                if not combo in combinations:
+                    combinations[combo] = seq_species[sequence]
+                else:
+                    combinations[combo] += seq_species[sequence]
+
+    if max(combinations.values()) >= args.min_count:
+        covar_fh = open(samp+'_covars.tsv', "w")
+        covar_fh.write(samp+"("+str(sam_read_count)+")\n")
+        covar_fh.write("Co-Variants\tCount\tAbundance\n")
+        sortedcombos = sorted(combinations, key=combinations.__getitem__, reverse=True)
+        for key in sortedcombos:
+            if combinations[key] >= args.min_count:
+                if args.wgs == 0:
+                    abund = combinations[key] / sam_read_count 
+                elif args.wgs == 1:
+                    splitcombos = key.split()
+                    if not aa_centered:
+                        startcovPos = ''
+                        for c in splitcombos[0].strip('ATGCN'):
+                            if c.isdigit():
+                                startcovPos += c
+                            else:
+                                break
+                        endcovPos = ''
+                        split_mut = splitcombos[-1].split('(')[0]
+                        if '-' in split_mut and not 'insert' in split_mut:
+                            pos_string = split_mut.strip('ATGCN').split('-')[1]
+                        else:
+                            pos_string = split_mut.strip('ATGCN')
+                        for c in pos_string:
+                            if c.isdigit():
+                                endcovPos += c
+                            else:
+                                break
+                    else:
+                        startcovPos = min(aa_centered[splitcombos[0]])
+                        endcovPos = max(aa_centered[splitcombos[-1]])
+                    if args.covar_tile_coverage == 0:
+                        coveragevals = []
+                        for i in range(int(startcovPos), int(endcovPos)+1):
+                            coveragevals.append(coverage[i])
+                        abund = combinations[key] / min(coveragevals)
+                    elif args.covar_tile_coverage == 1:
+                        coverageval = 0
+                        for tile_start in tiles:
+                            if int(startcovPos) >= int(tile_start):
+                                for tile_end in tiles[tile_start]:
+                                    if int(endcovPos) <= int(tile_end):
+                                        coverageval += tiles[tile_start][tile_end]
+                        abund = combinations[key] / coverageval
+                if abund >= args.min_samp_abund:
+                    covar_fh.write(f"{key}\t{combinations[key]}\t{abund:.3f}\n")
+            else:
+                break
+
+        covar_fh.close()
 
 def faSAMparse(args, ref, file): # process SAM files
 
@@ -990,60 +1124,12 @@ def faSAMparse(args, ref, file): # process SAM files
         print(f"No Reads for {samp}")
 
     else:
-
         if args.seq == 1: # output the sequence
-            seq_fh = open(samp+'_unique_seqs.tsv', "w")
-            seq_fh.write(samp+"("+str(sam_read_count)+")\n")
-            seq_fh.write("Unique Sequence\tCount\tAbundance\n")
-
-            sorted_seq = sorted(seq_species, key=seq_species.__getitem__, reverse=True)
-            for key in sorted_seq:
-                if seq_species[key] >= args.min_count:
-                    if args.wgs == 0:
-                        abund = seq_species[key] / sam_read_count
-                    elif args.wgs == 1:
-                        splitseqs = key.split()
-                        cov = []
-                        for x in range(int(splitseqs[0]), int(splitseqs[-1])+1):
-                            cov.append(coverage[x])
-                        min_cov = min(cov)
-                        abund = seq_species[key]/min_cov
-                    if (abund >= args.min_samp_abund):
-                            seq_fh.write(f"{key}\t{seq_species[key]}\t{abund:.3f}\n")
-                else:
-                    break
-
-            seq_fh.close()
-            # END SEQ OUT
+            printUniqueSeq(samp, sam_read_count, seq_species, coverage, args)
             # print(f"End unqiue seq out for {samp}")
 
         if args.indel == 1 and len(indel_dict) > 0: # output indels, if there are any
-            sorted_indels = sorted(indel_dict, key=indel_dict.__getitem__, reverse=True)
-            indels_to_write = []
-            for key in sorted_indels:
-                if indel_dict[key] >= args.min_count:
-                    if args.wgs == 0:
-                        abund = indel_dict[key] / sam_read_count
-                    elif args.wgs == 1:
-                        indelPos = ''
-                        for c in key.strip('ATCGN'):
-                            if c.isdigit():
-                                indelPos += c
-                            else:
-                                break
-                        abund = indel_dict[key] / coverage[int(indelPos)]
-                    if abund >= args.min_samp_abund:
-                        indels_to_write.append(f"{key}\t{indel_dict[key]}\t{abund:.3f}\n")
-                else:
-                    break
-            if len(indels_to_write) > 0:
-                indel_fh = open(samp+'_indels.tsv', "w")
-                indel_fh.write(samp+"("+str(sam_read_count)+")\n")
-                indel_fh.write("Indel\tCount\tAbundance\n")
-                for indel_entry in indels_to_write:
-                    indel_fh.write(indel_entry)
-                indel_fh.close()
-            # END INDEL OUT
+            printInDels(samp, sam_read_count, indel_dict, coverage, args)
             # print(f"End indel out for {samp}")
 
         if args.nt_call == 1: # out put nt calls
@@ -1230,61 +1316,7 @@ def faSAMparse(args, ref, file): # process SAM files
             # END NT CALL OUT
             # print(f"End nt call out for {samp}")
         if args.covar == 1: # output covariants
-            combinations = {}
-            for sequence in seq_species:
-                if args.wgs == 0:
-                    singles = sequence.split()
-                else:
-                    singles = (sequence.split())[1:-1]
-                if len(singles) <= args.max_dist and singles[0] != 'Reference':
-                    for combo in getCombos(singles, args.max_covar):
-                        if not combo in combinations:
-                            combinations[combo] = seq_species[sequence]
-                        else:
-                            combinations[combo] += seq_species[sequence]
-
-            if max(combinations.values()) >= args.min_count:
-                covar_fh = open(samp+'_covars.tsv', "w")
-                covar_fh.write(samp+"("+str(sam_read_count)+")\n")
-                covar_fh.write("Co-Variants\tCount\tAbundance\n")
-                sortedcombos = sorted(combinations, key=combinations.__getitem__, reverse=True)
-                for key in sortedcombos:
-                    if combinations[key] >= args.min_count:
-                        if args.wgs == 0:
-                            abund = combinations[key] / sam_read_count
-                        elif args.wgs == 1:
-                            splitcombos = key.split()
-                            if len(splitcombos) == 1:
-                                coveragePos = ''
-                                for c in key.strip('ATGCN'):
-                                    if c.isdigit():
-                                        coveragePos += c
-                                    else:
-                                        break
-                                abund = combinations[key] / coverage[int(coveragePos)]
-                            else:
-                                startcovPos = ''
-                                for c in splitcombos[0].strip('ATGCN'):
-                                    if c.isdigit():
-                                        startcovPos += c
-                                    else:
-                                        break
-                                endcovPos = ''
-                                for c in splitcombos[-1].strip('ATGCN'):
-                                    if c.isdigit():
-                                        endcovPos += c
-                                    else:
-                                        break
-                                coveragevals = []
-                                for i in range(int(startcovPos), int(endcovPos)+1):
-                                    coveragevals.append(coverage[i])
-                                abund = combinations[key] / min(coveragevals)
-                        if abund >= args.min_samp_abund:
-                            covar_fh.write(f"{key}\t{combinations[key]}\t{abund:.3f}\n")
-                    else:
-                        break
-                covar_fh.close()
-            # END COVAR OUT
+            printCovars(samp, sam_read_count, seq_species, coverage, args)
             # print(f"End covar out for {samp}")
     print(f'End {file} main output')
 
@@ -1296,6 +1328,8 @@ def gbSAMparse(args, ref, file): # process SAM files
     indel_dict = {}
     ins_nt_dict = {}
     seq_species = {}
+    aa_seq_species = {}
+    aa_genome_pos_dict = {}
     sam_read_count = 0
     sam_line_count = 0
     coverage = {}
@@ -1747,7 +1781,60 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 MNPchecked.append(checkedmut)
                             mutations = MNPchecked
 
-
+                        if args.AAcentered == 1 and args.AAreport == 1:
+                            
+                            aa_seq = []
+                            for mut in mutations:
+                                if '|' in mut:
+                                    split_mut = mut.split('|')
+                                    for orfmut in split_mut[1:]:
+                                        if not orfmut[1:-1] in aa_seq:
+                                            aa_seq.append(orfmut[1:-1])
+                                        if '-' in split_mut[0]:
+                                            try:
+                                                aa_genome_pos_dict[orfmut[1:-1]].append(split_mut[0].split('-')[0].strip('ATCGN'))
+                                            except:
+                                                aa_genome_pos_dict[orfmut[1:-1]] = [split_mut[0].split('-')[0].strip('ATCGN')]
+                                            if not 'insert' in split_mut[0]:
+                                                aa_genome_pos_dict[orfmut[1:-1]].append(split_mut[0].split('-')[1].strip('ATCGNDel'))
+                                        else:
+                                            try:
+                                                aa_genome_pos_dict[orfmut[1:-1]].append(split_mut[0].strip('ATCGN'))
+                                            except:
+                                                aa_genome_pos_dict[orfmut[1:-1]] = [split_mut[0].strip('ATCGN')]
+                                else:
+                                    aa_seq.append('Non-Coding:'+mut)
+                                    
+                                    if '-' in mut:
+                                        try:
+                                            aa_genome_pos_dict['Non-Coding:'+mut].append(mut.split('-')[0].strip('ATCGN'))
+                                        except:
+                                            aa_genome_pos_dict['Non-Coding:'+mut] = [mut.split('-')[0].strip('ATCGN')]
+                                        if not 'insert' in mut:
+                                            aa_genome_pos_dict['Non-Coding:'+mut].append(mut.split('-')[1].strip('ATCGNDel'))
+                                    else:
+                                        try:
+                                            aa_genome_pos_dict['Non-Coding:'+mut].append(mut.strip('ATCGN'))
+                                        except:
+                                            aa_genome_pos_dict['Non-Coding:'+mut] = [mut.strip('ATCGN')]
+                            
+                            aa_seq = " ".join(aa_seq)
+                            
+                            if args.wgs == 0:
+                                try:
+                                    aa_seq_species[aa_seq] += reads_count
+                                except:
+                                    aa_seq_species[aa_seq] = reads_count
+                                # if args.read == 1:
+                                    # reads_fh.write(f"{readID}\t{aa_seq}\n")
+                            else:
+                                try:
+                                    aa_seq_species[str(Pos)+' '+aa_seq+' '+str(Pos+q_pars_pos)] += reads_count
+                                except:
+                                    aa_seq_species[str(Pos)+' '+aa_seq+' '+str(Pos+q_pars_pos)] = reads_count
+                                # if args.read == 1:
+                                    # reads_fh.write(f"{readID}\t{str(Pos)} {aa_seq} {str(Pos+q_pars_pos)}\n")
+                            
                         mutations = " ".join(mutations)
 
                         if args.wgs == 0:
@@ -1781,57 +1868,13 @@ def gbSAMparse(args, ref, file): # process SAM files
 
     else:
         if args.seq == 1: # output the sequence
-            seq_fh = open(samp+'_unique_seqs.tsv', "w")
-            seq_fh.write(samp+"("+str(sam_read_count)+")\n")
-            seq_fh.write("Unique Sequence\tCount\tAbundance\n")
-
-            sorted_seq = sorted(seq_species, key=seq_species.__getitem__, reverse=True)
-            for key in sorted_seq:
-                if seq_species[key] >= args.min_count:
-                    if args.wgs == 0:
-                        abund = seq_species[key]/sam_read_count
-                    elif args.wgs == 1:
-                        splitseqs = key.split()
-                        cov = []
-                        for x in range(int(splitseqs[0]), int(splitseqs[-1])):
-                            cov.append(coverage[x])
-                        abund = seq_species[key] / min(cov)
-                    if (abund >= args.min_samp_abund):
-                        seq_fh.write(f"{key}\t{seq_species[key]}\t{abund:.3f}\n")
-                else:
-                    break
-
-            seq_fh.close()
-            # END SEQ OUT
+            printUniqueSeq(samp, sam_read_count, seq_species, coverage, args)
+            if args.AAcentered == 1 and args.AAreport == 1:
+                printUniqueSeq(samp+'_AA', sam_read_count, aa_seq_species, coverage, args)
             # print(f"End unqiue seq out for {samp}")
 
         if args.indel == 1 and len(indel_dict) > 0: # output indels, if there are any
-            sorted_indels = sorted(indel_dict, key=indel_dict.__getitem__, reverse=True)
-            indels_to_write = []
-            for key in sorted_indels:
-                if indel_dict[key] >= args.min_count:
-                    if args.wgs == 0:
-                        abund = indel_dict[key] / sam_read_count
-                    elif args.wgs == 1:
-                        indelPos = ''
-                        for c in key.strip('ATCGN'):
-                            if c.isdigit():
-                                indelPos += c
-                            else:
-                                break
-                        abund = indel_dict[key] / coverage[int(indelPos)]
-                    if abund >= args.min_samp_abund:
-                        indels_to_write.append(f"{key}\t{indel_dict[key]}\t{abund:.3f}\n")
-                else:
-                    break
-            if len(indels_to_write) > 0:
-                indel_fh = open(samp+'_indels.tsv', "w")
-                indel_fh.write(samp+"("+str(sam_read_count)+")\n")
-                indel_fh.write("Indel\tCount\tAbundance\n")
-                for indel_entry in indels_to_write:
-                    indel_fh.write(indel_entry)
-                indel_fh.close()
-            # END INDEL OUT
+            printInDels(samp, sam_read_count, indel_dict, coverage, args)
             # print(f"End indel out for {samp}")
 
         if args.nt_call == 1: # out put nt calls
@@ -1845,6 +1888,11 @@ def gbSAMparse(args, ref, file): # process SAM files
                 ntcallv_fh.write(samp+"("+str(sam_read_count)+")\n")
             sorted_Pos = sorted(nt_call_dict_dict)
             if args.AAreport == 1:
+            
+                ntcall_fh.write("Position\tref NT\tAAs\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
+                if args.ntvar == 1:
+                    ntcallv_fh.write("Position\tref NT\tAAs\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
+                consensus = {}
                 OrfPosDict = {}
                 for orf in ref[3]:
                     orflength = 0
@@ -1857,10 +1905,6 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 OrfPosDict[i] = [[orf , orfPos, ref[3][orf]['AAs'][(orfPos-1)//3] ,(((orfPos-1)//3)+1)]]
                         orflength += rf[1] - rf[0] + 1
 
-                ntcall_fh.write("Position\tref NT\tAAs\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
-                if args.ntvar == 1:
-                    ntcallv_fh.write("Position\tref NT\tAAs\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
-                consensus = {}
                 ORFmismatch = {}
                 for Pos in sorted_Pos:
                     try:
@@ -2108,64 +2152,9 @@ def gbSAMparse(args, ref, file): # process SAM files
             # END NT CALL OUT
             # print(f"End nt call out for {samp}")
         if args.covar == 1: # output covariants
-            combinations = {}
-            for sequence in seq_species:
-                if args.wgs == 0:
-                    singles = sequence.split()
-                else:
-                    singles = (sequence.split())[1:-1]
-                if len(singles) <= args.max_dist and singles[0] != 'Reference':
-                    for combo in getCombos(singles, args.max_covar):
-                        if not combo in combinations:
-                            combinations[combo] = seq_species[sequence]
-                        else:
-                            combinations[combo] += seq_species[sequence]
-
-            if max(combinations.values()) >= args.min_count:
-                covar_fh = open(samp+'_covars.tsv', "w")
-                covar_fh.write(samp+"("+str(sam_read_count)+")\n")
-                covar_fh.write("Co-Variants\tCount\tAbundance\n")
-                sortedcombos = sorted(combinations, key=combinations.__getitem__, reverse=True)
-                for key in sortedcombos:
-                    if combinations[key] >= args.min_count:
-                        if args.wgs == 0:
-                            abund = combinations[key] / sam_read_count 
-                        elif args.wgs == 1:
-                            splitcombos = key.split()
-                            if len(splitcombos) == 1:
-                                coveragePos = ''
-                                for c in key.strip('ATGCN'):
-                                    if c.isdigit():
-                                        coveragePos += c
-                                    else:
-                                        break
-                                abund = combinations[key] / coverage[int(coveragePos)]
-                            else:
-                                startcovPos = ''
-                                for c in splitcombos[0].strip('ATGCN'):
-                                    if c.isdigit():
-                                        startcovPos += c
-                                    else:
-                                        break
-                                endcovPos = ''
-                                for c in splitcombos[-1].strip('ATGCN'):
-                                    if c.isdigit():
-                                        endcovPos += c
-                                    else:
-                                        break
-                                coveragevals = []
-                                for i in range(int(startcovPos), int(endcovPos)+1):
-                                    coveragevals.append(coverage[i])
-                                abundance = combinations[key] / min(coveragevals)
-                        if abund >= args.min_samp_abund:
-                            covar_fh.write(f"{key}\t{combinations[key]}\t{abund:.3f}\n")
-                    else:
-                        break
-
-                covar_fh.close()
-
-
-            # END COVAR OUT
+            printCovars(samp, sam_read_count, seq_species, coverage, args, {})
+            if args.AAcentered == 1 and args.AAreport == 1:
+                printCovars(samp+'_AA', sam_read_count, aa_seq_species, coverage, args, aa_genome_pos_dict)
             # print(f"End covar out for {samp}")
     print(f'End {file} main output')
 
