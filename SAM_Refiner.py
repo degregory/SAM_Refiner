@@ -664,7 +664,9 @@ def printCovars(samp, sam_read_count, seq_species, coverage, args, aa_centered):
                     else:
                         startcovPos = min(aa_centered[splitcombos[0]])
                         endcovPos = max(aa_centered[splitcombos[-1]])
-                    if args.covar_tile_coverage == 0:
+                    if startcovPos == endcovPos:
+                        abund = combinations[key] / coverage[int(startcovPos)]
+                    elif args.covar_tile_coverage == 0:
                         coveragevals = []
                         for i in range(int(startcovPos), int(endcovPos)+1):
                             coveragevals.append(coverage[i])
@@ -1316,7 +1318,7 @@ def faSAMparse(args, ref, file): # process SAM files
             # END NT CALL OUT
             # print(f"End nt call out for {samp}")
         if args.covar == 1: # output covariants
-            printCovars(samp, sam_read_count, seq_species, coverage, args)
+            printCovars(samp, sam_read_count, seq_species, coverage, args, {})
             # print(f"End covar out for {samp}")
     print(f'End {file} main output')
 
@@ -1788,20 +1790,21 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 if '|' in mut:
                                     split_mut = mut.split('|')
                                     for orfmut in split_mut[1:]:
-                                        if not orfmut[1:-1] in aa_seq:
-                                            aa_seq.append(orfmut[1:-1])
+                                        new_entry = orfmut[1:-1].split(':')[0]+':'+orfmut[1:-1].split('(')[1][:-1]+'('+split_mut[0]+')'
+                                        if not new_entry in aa_seq:
+                                            aa_seq.append(new_entry)
                                         if '-' in split_mut[0]:
                                             try:
-                                                aa_genome_pos_dict[orfmut[1:-1]].append(split_mut[0].split('-')[0].strip('ATCGN'))
+                                                aa_genome_pos_dict[new_entry].append(split_mut[0].split('-')[0].strip('ATCGN'))
                                             except:
-                                                aa_genome_pos_dict[orfmut[1:-1]] = [split_mut[0].split('-')[0].strip('ATCGN')]
+                                                aa_genome_pos_dict[new_entry] = [split_mut[0].split('-')[0].strip('ATCGN')]
                                             if not 'insert' in split_mut[0]:
-                                                aa_genome_pos_dict[orfmut[1:-1]].append(split_mut[0].split('-')[1].strip('ATCGNDel'))
+                                                aa_genome_pos_dict[new_entry].append(split_mut[0].split('-')[1].strip('ATCGNDel'))
                                         else:
                                             try:
-                                                aa_genome_pos_dict[orfmut[1:-1]].append(split_mut[0].strip('ATCGN'))
+                                                aa_genome_pos_dict[new_entry].append(split_mut[0].strip('ATCGN'))
                                             except:
-                                                aa_genome_pos_dict[orfmut[1:-1]] = [split_mut[0].strip('ATCGN')]
+                                                aa_genome_pos_dict[new_entry] = [split_mut[0].strip('ATCGN')]
                                 else:
                                     aa_seq.append('Non-Coding:'+mut)
                                     
