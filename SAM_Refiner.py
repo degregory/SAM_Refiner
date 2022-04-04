@@ -1790,7 +1790,10 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 if '|' in mut:
                                     split_mut = mut.split('|')
                                     for orfmut in split_mut[1:]:
-                                        new_entry = orfmut[1:-1].split(':')[0]+':'+orfmut[1:-1].split('(')[1][:-1]+'('+split_mut[0]+')'
+                                        try:
+                                            new_entry = orfmut[1:-1].split(':')[0]+':'+orfmut[1:-1].split('(')[1][:-1]+'('+split_mut[0]+')'
+                                        except:
+                                            new_entry = orfmut[1:-1]
                                         if not new_entry in aa_seq:
                                             aa_seq.append(new_entry)
                                         if '-' in split_mut[0]:
