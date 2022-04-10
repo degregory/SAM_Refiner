@@ -113,7 +113,7 @@ def arg_parser():
     parser.add_argument(
         '--AAcentered',
         type=int,
-        default=1,
+        default=0,
         choices=[0, 1],
         help='Enable/Disable (1/0) amino acid centered seq and covar outputs for .gb processing (--AAcentered 1), requires AAreport enabled'
     )
@@ -662,15 +662,15 @@ def printCovars(samp, sam_read_count, seq_species, coverage, args, aa_centered):
                             else:
                                 break
                     else:
-                        startcovPos = min(aa_centered[splitcombos[0]])
-                        endcovPos = max(aa_centered[splitcombos[-1]])
+                        startcovPos = aa_centered[splitcombos[0]][0]
+                        endcovPos = aa_centered[splitcombos[-1]][-1]
                     if startcovPos == endcovPos:
                         abund = combinations[key] / coverage[int(startcovPos)]
                     elif args.covar_tile_coverage == 0:
                         coveragevals = []
                         for i in range(int(startcovPos), int(endcovPos)+1):
                             coveragevals.append(coverage[i])
-                        abund = combinations[key] / min(coveragevals)
+                            abund = combinations[key] / min(coveragevals)
                     elif args.covar_tile_coverage == 1:
                         coverageval = 0
                         for tile_start in tiles:
