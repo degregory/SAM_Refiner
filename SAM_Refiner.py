@@ -3,7 +3,7 @@
 # Writen by Devon Gregory with assistance from Christopher Bottoms
 # University of Missouri
 # Distributed under GNU GENERAL PUBLIC LICENSE v3
-# last editted on 20220402
+# last editted on 202204018
 
 import os
 import sys
@@ -11,10 +11,12 @@ import argparse
 import itertools
 import time
 from multiprocessing import Process, Pool
-from pathlib import Path
+
 """
 To Do:
+codon correct indels
 Improve MNP processing for frameshifts
+handle snp '-' deletion in MNP processing
 use all seq in fasta for references
 Clean up / polish / add comments
 add --verbose --quiet options
@@ -325,12 +327,12 @@ def arg_parser():
 
     return(args)
 
-"""
-From the reference provide, attempts to obtain reference ID and NT sequence, and AA sequence(s) if AAreport is enabled.
-For fasta formatted files, only the first entry is parsed.
-For genbank formatted files, CDS AA sequences will be pulled along with their gene ID
-"""
 def get_ref(args): # get the reference ID and sequence from the FASTA file.  Will only get the first.
+    """
+    From the reference provide, attempts to obtain reference ID and NT sequence, and AA sequence(s) if AAreport is enabled.
+    For fasta formatted files, only the first entry is parsed.
+    For genbank formatted files, CDS AA sequences will be pulled along with their gene ID
+    """
     n=0
     refID = ''
     reftype = ''
@@ -391,7 +393,7 @@ def get_ref(args): # get the reference ID and sequence from the FASTA file.  Wil
                         gene = line.split("=")[1].strip('"\n\r')
                     elif "product=" in line:
                         product = line.split("=")[1].strip('"\n\r')
-                        
+
                     elif "translation" in line:
                         try:
                             gene
@@ -401,7 +403,7 @@ def get_ref(args): # get the reference ID and sequence from the FASTA file.  Wil
                             product
                         except:
                             product = gene
-                            
+
                         orfID = product.replace(' ', '_')
                         n = 1
                         if orfID in ORFS:
@@ -432,7 +434,6 @@ def get_ref(args): # get the reference ID and sequence from the FASTA file.  Wil
                             orfID = ""
                             collect = "Null"
 
-
                 elif collect == "SEQ":
                     if not "//" in line:
                         ntsline = ""
@@ -448,9 +449,6 @@ def get_ref(args): # get the reference ID and sequence from the FASTA file.  Wil
                     ORFS[gene]["nts"] = orfnts.upper()
             refORFS = ORFS
             refseq = nts.upper()
-
-    # print(refID)
-
 
     return(refID, refseq, reftype, refORFS)
 
@@ -548,6 +546,390 @@ def singletCodon(ntPos, nt, ref): # process to return the AA and protein seq. po
 
     return(AAPos+1, AAcall(codon))
 
+def SAM_line_parser(args, ref, file): # gets read mapping information from SAM and converts it to a PM called line
+
+    samp=file[0: -4]
+    nt_call_dict_dict = {}
+    ins_nt_dict = {}
+    reads_list = []
+    col_reads = {}
+    sam_read_count = 0
+    sam_line_count = 0
+    coverage = {}
+
+    sam_fh = open(file, "r")
+    for line in sam_fh:
+        if not line.startswith('@'): # ignore header lines
+            splitline = line.split("\t")
+            if ref[0].upper().startswith(splitline[2].upper()): # check map ID matches referecne ID
+                if int(splitline[4]) > 0:  # Check mapping score is positive
+
+                    sam_line_count += 1
+                    if splitline[9].upper().strip('ATCGN-'):
+                        print(f"Invalid character(s) (splitline[9].upper().strip('ATCGN-')) in sequence for line {sam_line_count}, ID {splitline[0]}")
+                        continue
+                    reads_count=1
+                    if args.use_count == 1: # get the unique sequence counts
+                        if '-' in splitline[0] and '=' in splitline[0]:
+                            try:
+                                eq_split = splitline[0].split('=')
+                                dash_split = splitline[0].split('-')
+                                if len(eq_split[-1]) > len(dash_split[-1]):
+                                    reads_count=int(dash_split[-1])
+                                else:
+                                    reads_count=int(eq_split[-1])
+                            except:
+                                pass
+
+                        elif '-' in splitline[0]:
+                            try:
+                                reads_count=int(splitline[0].split('-')[-1])
+                            except:
+                                pass
+
+                        elif '=' in splitline[0]:
+                            try:
+                                reads_count=int(splitline[0].split('=')[-1])
+                            except:
+                                pass
+
+                    sam_read_count += reads_count
+
+                    # if sam_read_count % 5000 == 0:
+                        # print(f"At read {sam_read_count} of {samp}")
+                    # if sam_line_count % 5000 == 0:
+                        # print(f"At line {sam_line_count} of {samp} SAM")
+
+                    CIGAR = splitline[5]
+                    Pos = int(splitline[3])
+
+                    readID = splitline[0]
+                    query_seq = splitline[9].upper()
+                    run_length = 0
+                    query_pos = 0
+                    q_pars_pos = 0
+                    mutations = []
+
+                    for C in CIGAR: # process sequence based on standard CIGAR line
+                        if C == 'M' or C == 'I' or C == 'D' or C == 'S' or C == 'H':
+                            if C == 'S':
+                                query_pos = query_pos + run_length
+                            # if C == 'H':
+
+                            if C == 'I':
+                                if query_pos > 0:
+                                    # add insertion to dict
+                                    iPos = q_pars_pos+Pos
+
+                                    iSeq = query_seq[query_pos: query_pos+run_length]
+                                    istring = str(iPos)+'-insert'+iSeq
+
+                                    mutations.append(istring)
+
+                                    if args.nt_call == 1:
+                                        try:
+                                            ins_nt_dict[iPos]
+                                        except:
+                                            ins_nt_dict[iPos] = {istring : reads_count}
+                                        else:
+                                            try:
+                                                ins_nt_dict[iPos][istring] += reads_count
+                                            except:
+                                                ins_nt_dict[iPos][istring] = reads_count
+
+                                    query_pos = query_pos + run_length
+
+                            elif C == 'D':
+
+                                delPos = q_pars_pos+Pos
+                                delnts = ref[1][delPos-1:delPos+run_length-1]
+                                delstring = delnts+str(delPos)+'-'+str(delPos+run_length-1)+'del'
+
+                                mutations.append(delstring)
+
+                                if args.nt_call == 1:
+                                    for N in range(delPos, delPos+int(run_length)):
+                                        try:
+                                            nt_call_dict_dict[N]
+                                        except:
+                                            nt_call_dict_dict[N] = {'A' : 0,
+                                                                    'T' : 0,
+                                                                    'C' : 0,
+                                                                    'G' : 0,
+                                                                    'N' : 0,
+                                                                    '-' : 0}
+                                            nt_call_dict_dict[N]['-'] = reads_count
+                                        else:
+                                            nt_call_dict_dict[N]['-'] += reads_count
+
+                                q_pars_pos = q_pars_pos + run_length
+
+                            elif C == 'M':
+                                offset = q_pars_pos-query_pos
+                                refPos = Pos+offset
+
+                                for ntPos in range(query_pos, query_pos+run_length):
+
+                                    if query_seq[ntPos] != ref[1][refPos+ntPos-1]:
+                                        mutations.append(ref[1][refPos+ntPos-1]+str(refPos+ntPos)+query_seq[ntPos])
+
+                                    if args.nt_call == 1:
+                                        if not query_seq[ntPos] in ['A', 'T' ,'C', 'G', 'N', '-']:
+                                            mut_nt = 'N'
+                                        else:
+                                            mut_nt = query_seq[ntPos]
+                                        try:
+                                            nt_call_dict_dict[refPos+ntPos]
+                                        except:
+                                            nt_call_dict_dict[refPos+ntPos] = {'A' : 0,
+                                                                               'T' : 0,
+                                                                               'C' : 0,
+                                                                               'G' : 0,
+                                                                               'N' : 0,
+                                                                               '-' : 0}
+                                            nt_call_dict_dict[refPos+ntPos][mut_nt] = reads_count
+                                        else:
+                                            nt_call_dict_dict[refPos+ntPos][mut_nt] += reads_count
+
+
+                                q_pars_pos = q_pars_pos + run_length
+                                query_pos = query_pos + run_length
+
+                            run_length = 0
+
+
+                        else:
+                            run_length = (10 * run_length) + int(C)
+                    # END CIGAR PARSE
+
+                    seq_end_pos = Pos+q_pars_pos-1
+                    if args.wgs == 1 or args.nt_call == 1:
+                        for i in range(Pos, seq_end_pos+1): # update coverage
+                            try:
+                                coverage[i] += reads_count
+                            except:
+                                coverage[i] = reads_count
+
+                    if len(mutations) == 0: # record reference counts
+                        if args.read == 1:
+                            reads_list.append([readID, 'Reference', Pos, seq_end_pos])
+                        if args.seq == 1 or args.covar == 1 or args.indel == 1:
+                            try:
+                                col_reads['Reference']
+                            except:
+                                col_reads['Reference'] = { str(Pos)+'x'+str(seq_end_pos): reads_count}
+                            else:
+                                try:
+                                    col_reads['Reference'][str(Pos)+'x'+str(seq_end_pos)] += reads_count
+                                except:
+                                    col_reads['Reference'][str(Pos)+'x'+str(seq_end_pos)] = reads_count
+                    else:
+                        mutations = " ".join(mutations)
+                        if args.read == 1:
+                            reads_list.append([readID, mutations, Pos, seq_end_pos])
+                        if args.seq == 1 or args.covar == 1 or args.indel == 1:
+                            try:
+                                col_reads[mutations]
+                            except:
+                                col_reads[mutations] = { str(Pos)+'x'+str(seq_end_pos): reads_count}
+                            else:
+                                try:
+                                    col_reads[mutations][str(Pos)+'x'+str(seq_end_pos)] += reads_count
+                                except:
+                                    col_reads[mutations][str(Pos)+'x'+str(seq_end_pos)] = reads_count
+
+
+    sam_fh.close()
+    # END SAM LINES
+    print(f"End SAM line parsing for {samp}")
+
+    return(nt_call_dict_dict, ins_nt_dict, reads_list, col_reads, sam_read_count, coverage)
+
+def fasta_SNP_call(mut, ref):
+
+    if 'ins' in mut:
+        istring = ''
+        iSeq = mut.split('insert')[1]
+        iPos = int(mut.split('-')[0])
+        run_length = len(iSeq)
+        if (run_length % 3 == 0):
+            iProt = ''
+            if iPos % 3 == 1:
+                for x in range(0, (run_length//3)):
+                    AA = AAcall(iSeq[x*3]+iSeq[x*3+1]+iSeq[x*3+2])
+                    iProt += AA
+                istring += mut+'(' + str(((iPos-1)//3)+1) + iProt + ')'
+            elif iPos % 3 == 2:
+                print(mut)
+                print('mod 2')
+                ipSeq = ref[1][iPos-2]+iSeq+ref[1][iPos-1:iPos+1]
+                for x in range(0, (run_length//3)+1):
+                    AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
+                    iProt += AA
+                istring += ref[1][iPos-2:iPos+1]+str(iPos-1)+'-'+str(iPos+1)+ipSeq+'insert(' + ref[3][1][(iPos-1)//3] + str(((iPos-1)//3)+1) + iProt + ')'
+            else:
+                print(mut)
+                print('mod 3')
+                ipSeq = ref[1][iPos-3:iPos-1]+iSeq+ref[1][iPos-1]
+                for x in range(0, (run_length//3)+1):
+                    AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
+                    iProt += AA
+                istring += ref[1][iPos-3:iPos]+str(iPos-2)+'-'+str(iPos)+ipSeq+'insert(' + ref[3][1][(iPos-1)//3] + str(((iPos-1)//3)+1) + iProt + ')'
+                print(istring)
+        else:
+            istring += mut+'('+ str(((iPos-1)//3)+1) +'fs)'
+        return(istring)
+
+    elif 'del' in mut:
+        delPos = ''
+        delnts = ''
+        run_length = 0
+        for c in mut.split('-')[0]:
+            if c.isdigit():
+                delPos += c
+            else:
+                run_length += 1
+        delPos = int(delPos)
+        delstring = ''
+        delendPos = delPos+run_length-1
+        newAArefpos = (delPos-1) // 3
+        if (run_length % 3 == 0):
+            if (delPos) % 3 == 1:
+                print(mut)
+                print('mod 1')
+                if run_length // 3 == 1:
+                    delstring += mut + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)] + str(newAArefpos+1) + 'del)'
+                else:
+                    delstring += mut + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)] + str(newAArefpos+1) + '-' + str(newAArefpos+run_length//3) + 'del' + ')'
+                print(delstring)
+            else:
+                if (delPos) % 3 == 2:
+                    print(mut)
+                    print('mod 2')
+                    oldnts = ref[1][delPos-2:delendPos+2]
+                    newcodon = ref[1][delPos-2]+ref[1][delendPos:delendPos+2]
+                    delstring += oldnts+str(delPos-1)+'-'+str(delendPos+2)+newcodon
+                elif (delPos) % 3 == 0:
+                    print(mut)
+                    print('mod 3')
+                    oldnts = ref[1][delPos-3:delendPos+1]
+                    newcodon = ref[1][delPos-3:delPos-1]+ref[1][delendPos]
+                    delstring += oldnts+str(delPos-2)+'-'+str(delendPos+1)+newcodon
+                delstring += 'del(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)+1] + str(newAArefpos+1) + '-' + str(newAArefpos+1+run_length//3) + AAcall(newcodon) + 'del)'
+                print(delstring)
+        else:
+            delstring += mut + '(' + str(newAArefpos+1) + 'fs)'
+        return(delstring)
+    else:
+        AAinfo = singletCodon(int(mut[1:-1]), mut[-1], ref[1])
+        AAstring = '('+ref[3][1][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')'
+        return(mut+AAstring)
+
+def gb_SNP_call(mut,ref):
+
+    if 'ins' in mut:
+        iSeq = mut.split('insert')[1]
+        iPos = int(mut.split('-')[0])
+        run_length = len(iSeq)
+        iProt = ''
+        for orf in ref[3]:
+            orflength = 0
+            for rf in ref[3][orf]['reading frames']:
+                if iPos >= rf[0] and iPos <= rf[1]:
+                    iProt += "|(" + orf + ":"
+                    orfPos = 1 + iPos - rf[0] + orflength
+                    AA = ''
+                    if (run_length % 3 == 0):
+                        if orfPos % 3 == 1:
+                            for x in range(0, (run_length//3)):
+                                AA += AAcall(iSeq[x*3]+iSeq[x*3+1]+iSeq[x*3+2])
+                            iProt += str(orfPos)+'insert'+iSeq+'(' + str(((orfPos-1)//3)+1) + AA
+                        else:
+                            if orfPos % 3 == 2:
+                                ipSeq = ref[1][iPos-2]+iSeq+ref[1][iPos-1:iPos+1]
+                                for x in range(0, (run_length//3)+1):
+                                    AA += AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
+                                iProt += ref[1][iPos-2:iPos+1]+str(orfPos-1)+'-'+str(orfPos+1)+ipSeq
+                            else:
+                                ipSeq = ref[1][iPos-3:iPos-1]+iSeq+ref[1][iPos-1]
+                                for x in range(0, (run_length//3)+1):
+                                    AA += AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
+                                iProt += ref[1][iPos-3:iPos]+str(orfPos-2)+'-'+str(orfPos)+ipSeq
+                            iProt += "insert(" + ref[3][orf]["AAs"][(orfPos-1)//3] + str(((orfPos-1)//3)+1) + AA
+                    else:
+                        iProt += str(orfPos)+'insert'+iSeq+'(' + str(((orfPos-1)//3)+1) + 'fs'
+                    iProt += "))"
+                orflength += rf[1] - rf[0] + 1
+        return(mut+iProt)
+
+    elif 'del' in mut:
+        delPos = ''
+        delnts = ''
+        run_length = 0
+        for c in mut.split('-')[0]:
+            if c.isdigit():
+                delPos += c
+            else:
+                run_length += 1
+        delPos = int(delPos)
+        delProt = ''
+        delendPos = delPos+run_length-1
+        for orf in ref[3]:
+            orflength = 0
+            for rf in ref[3][orf]['reading frames']:
+                if delPos > rf[1] or delendPos < rf[0]:
+                    pass
+                elif delPos >= rf[0] and delendPos <= rf[1]:
+                    delProt += "|(" + orf + ":"
+                    orfPos = 1 + delPos - rf[0] + orflength
+                    orfendPos = orfPos+run_length-1
+                    startcodon = ((orfPos-1)//3)+1
+                    if (run_length % 3 == 0):
+                        endcodon = ((orfendPos-1)//3)+1
+                        if ((orfPos) % 3 == 1 ):
+                            delProt += delnts + str(orfPos) +'-'+ str(orfendPos) + 'del(' + ref[3][orf]["AAs"][startcodon-1:endcodon] + str(startcodon)
+                            if run_length // 3 == 1:
+                                delProt += 'del'
+                            else:
+                                delProt += '-' + str(endcodon) + 'del'
+                        else:
+                            delAA = ''
+                            if (orfPos) % 3 == 2:
+                                oldnts = ref[1][delPos-2:delendPos+2]
+                                newcodon = ref[1][delPos-2]+ref[1][delendPos:delendPos+2]
+                                delProt += oldnts + str(orfPos-1) +'-'+ str(orfendPos+2) + newcodon
+                            else:
+                                oldnts = ref[1][delPos-3:delendPos+1]
+                                newcodon = ref[1][delPos-3:delPos-1]+ref[1][delendPos]
+                                delProt += oldnts + str(orfPos-2) +'-'+ str(orfendPos+1) + newcodon
+                            delProt += 'del(' + ref[3][orf]["AAs"][startcodon-1:endcodon] + str(startcodon) \
+                                    + '-' + str(endcodon) + AAcall(newcodon)+ 'del'
+                    else:
+                        delProt += delnts + str(orfPos) +'-'+ str(orfendPos) + 'del(' + str(startcodon) + 'fs'
+                    delProt += "))"
+                elif delendPos >= rf[0] and delPos <= rf[0]:
+                    delProt += "|(" + orf
+                    if orflength == 0:
+                        delProt += ":Start_disrupted)"
+                    else:
+                        delProt += ":fs/Splicing_disrupted)"
+                else:
+                    delProt += "|(" + orf + ":fs/Splicing/Termination_disrupted)"
+                orflength += rf[1] - rf[0] + 1
+        return(mut+delProt)
+    else:
+        PM = ''
+        PMPos = int(mut[1:-1])
+        for orf in ref[3]:
+            orflength = 0
+            for rf in ref[3][orf]['reading frames']:
+                if PMPos >= rf[0] and PMPos <= rf[1]:
+                    ORFPos = PMPos-rf[0]+1+orflength
+                    AAinfo = singletCodon(ORFPos, mut[-1], (ref[3][orf]['nts']))
+                    PM += '|(' + orf + ":" + mut[0] + str(ORFPos) + mut[-1] + "(" + ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+'))'
+                orflength += rf[1] - rf[0] + 1
+        return(mut+PM)
+
 def getCombos(qlist, clen): # returns combinations of single polymorphisms in a sequence
     combos = []
     if (clen == 0 or clen > len(qlist)):
@@ -557,28 +939,77 @@ def getCombos(qlist, clen): # returns combinations of single polymorphisms in a 
             combos.append(' '.join(comb))
     return(combos)
 
-def printUniqueSeq(samp, sam_read_count, seq_species, coverage, args):
+def printUniqueSeq(samp, sam_read_count, col_reads, coverage, args):
     seq_fh = open(samp+'_unique_seqs.tsv', "w")
     seq_fh.write(samp+"("+str(sam_read_count)+")\n")
     seq_fh.write("Unique Sequence\tCount\tAbundance\n")
+    if args.AAcentered == 1 and args.AAreport == 1:
+        AAseq_fh = open(samp+'_AA_unique_seqs.tsv', "w")
+        AAseq_fh.write(samp+"("+str(sam_read_count)+")\n")
+        AAseq_fh.write("Unique Sequence\tCount\tAbundance\n")
+
+    seq_species = {}
+
+    for SNP_sequence in col_reads:
+        for start_end in col_reads[SNP_sequence]:
+            if 'x' in start_end:
+                if args.wgs == 1:
+                    seq_species[start_end+'x'+SNP_sequence] = col_reads[SNP_sequence][start_end]
+                else:
+                    try:
+                        seq_species[SNP_sequence] += col_reads[SNP_sequence][start_end]
+                    except:
+                        seq_species[SNP_sequence] = col_reads[SNP_sequence][start_end]
+            
 
     sorted_seq = sorted(seq_species, key=seq_species.__getitem__, reverse=True)
     for key in sorted_seq:
         if seq_species[key] >= args.min_count:
+            splitseqs = key.split('x')
             if args.wgs == 0:
                 abund = seq_species[key] / sam_read_count
             elif args.wgs == 1:
-                splitseqs = key.split()
                 cov = []
-                for x in range(int(splitseqs[0]), int(splitseqs[-1])+1):
+                for x in range(int(splitseqs[0]), int(splitseqs[1])+1):
                     cov.append(coverage[x])
                 abund = seq_species[key] / min(cov)
             if (abund >= args.min_samp_abund):
-                seq_fh.write(f"{key}\t{seq_species[key]}\t{abund:.3f}\n")
+                try:
+                    splitseqs[2]
+                except:
+                    if args.AAreport == 1:
+                        try:
+                            seq_fh.write(f"{col_reads[key]['AA_sequence']}\t{seq_species[key]}\t{abund:.3f}\n")
+                        except:
+                            seq_fh.write(f"{key}\t{seq_species[key]}\t{abund:.3f}\n")
+                    else:
+                        seq_fh.write(f"{key}\t{seq_species[key]}\t{abund:.3f}\n")
+                    if args.AAcentered == 1 and args.AAreport == 1:
+                        try:
+                            seq_fh.write(f"{col_reads[key]['AA_centered']}\t{seq_species[key]}\t{abund:.3f}\n")
+                        except:
+                            if not key == 'Reference':
+                                print('Non Reference seq without AA centereed output : '+splitseqs[2])
+                else:
+                    if args.AAreport == 1:
+                        try:
+                            seq_fh.write(f"{splitseqs[0]} {col_reads[splitseqs[2]]['AA_sequence']} {splitseqs[1]}\t{seq_species[key]}\t{abund:.3f}\n")
+                        except:
+                            seq_fh.write(f"{splitseqs[0]} {splitseqs[2]} {splitseqs[1]}\t{seq_species[key]}\t{abund:.3f}\n")
+                    else:
+                        seq_fh.write(f"{splitseqs[0]} {splitseqs[2]} {splitseqs[1]}\t{seq_species[key]}\t{abund:.3f}\n")
+                    if args.AAcentered == 1 and args.AAreport == 1:
+                        try:
+                            AAseq_fh.write(f"{splitseqs[0]} {col_reads[splitseqs[2]]['AA_centered']} {splitseqs[1]}\t{seq_species[key]}\t{abund:.3f}\n")
+                        except:
+                            if not splitseqs[2] == 'Reference':
+                                print('Non Reference seq without AA centereed output : '+splitseqs[2])
         else:
             break
 
     seq_fh.close()
+    if args.AAcentered == 1 and args.AAreport == 1:
+        AAseq_fh.close()
 
 def printInDels(samp, sam_read_count, indel_dict, coverage, args):
     sorted_indels = sorted(indel_dict, key=indel_dict.__getitem__, reverse=True)
@@ -607,434 +1038,237 @@ def printInDels(samp, sam_read_count, indel_dict, coverage, args):
             indel_fh.write(indel_entry)
         indel_fh.close()
 
-def printCovars(samp, sam_read_count, seq_species, coverage, args, aa_centered):
-    combinations = {}
+def printCovars(samp, sam_read_count, col_reads, coverage, args, aa_centered):
+    ntcombinations = {}
+    AAcombinations = {}
     tiles = {}
-    for sequence in seq_species:
-        if args.wgs == 0:
-            singles = sequence.split()
-        else:
-            if args.covar_tile_coverage == 1:
-                try:
-                    tiles[sequence.split()[0]]
-                except:
-                    tiles[sequence.split()[0]] = {sequence.split()[-1] : seq_species[sequence]}
-                else:
+    for sequence in col_reads:
+        ntsingles = []
+        AAsingles = []
+
+        if not sequence == 'Reference':
+            try:
+                ntsingles = col_reads[sequence]['AA_sequence'].split(' ')
+            except:
+                ntsingles = sequence.split(' ')
+            if aa_centered:
+                AAsingles = col_reads[sequence]['AA_centered'].split(' ')
+            sequence_count = 0
+            for value in col_reads[sequence].values():
+                if isinstance(value, int):
+                    sequence_count += value
+
+        if args.wgs == 1 and args.covar_tile_coverage == 1:
+            for start_end in col_reads[SNP_sequence]:
+                if 'x' in start_end:
+                    start_pos, end_pos = start_end.split('x')
+                    start_pos = int(start_pos)
+                    end_pos = int(end_pos)
                     try:
-                        tiles[sequence.split()[0]][sequence.split()[-1]] += seq_species[sequence]
+                        tiles[start_pos]
                     except:
-                        tiles[sequence.split()[0]][sequence.split()[-1]] = seq_species[sequence]
-            singles = sequence.split()[1:-1]
-        if len(singles) <= args.max_dist and singles[0] != 'Reference':
-            for combo in getCombos(singles, args.max_covar):
-                if not combo in combinations:
-                    combinations[combo] = seq_species[sequence]
-                else:
-                    combinations[combo] += seq_species[sequence]
-
-    if max(combinations.values()) >= args.min_count:
-        covar_fh = open(samp+'_covars.tsv', "w")
-        covar_fh.write(samp+"("+str(sam_read_count)+")\n")
-        covar_fh.write("Co-Variants\tCount\tAbundance\n")
-        sortedcombos = sorted(combinations, key=combinations.__getitem__, reverse=True)
-        for key in sortedcombos:
-            if combinations[key] >= args.min_count:
-                if args.wgs == 0:
-                    abund = combinations[key] / sam_read_count 
-                elif args.wgs == 1:
-                    splitcombos = key.split()
-                    if not aa_centered:
-                        startcovPos = ''
-                        for c in splitcombos[0].strip('ATGCN'):
-                            if c.isdigit():
-                                startcovPos += c
-                            else:
-                                break
-                        endcovPos = ''
-                        split_mut = splitcombos[-1].split('(')[0]
-                        if '-' in split_mut and not 'insert' in split_mut:
-                            pos_string = split_mut.strip('ATGCN').split('-')[1]
-                        else:
-                            pos_string = split_mut.strip('ATGCN')
-                        for c in pos_string:
-                            if c.isdigit():
-                                endcovPos += c
-                            else:
-                                break
+                        tiles[start_pos] = {end_pos : col_reads[SNP_sequence][start_end]}
                     else:
-                        startcovPos = aa_centered[splitcombos[0]][0]
-                        endcovPos = aa_centered[splitcombos[-1]][-1]
-                    if startcovPos == endcovPos:
-                        abund = combinations[key] / coverage[int(startcovPos)]
-                    elif args.covar_tile_coverage == 0:
-                        coveragevals = []
-                        for i in range(int(startcovPos), int(endcovPos)+1):
-                            coveragevals.append(coverage[i])
-                            abund = combinations[key] / min(coveragevals)
-                    elif args.covar_tile_coverage == 1:
-                        coverageval = 0
-                        for tile_start in tiles:
-                            if int(startcovPos) >= int(tile_start):
-                                for tile_end in tiles[tile_start]:
-                                    if int(endcovPos) <= int(tile_end):
-                                        coverageval += tiles[tile_start][tile_end]
-                        abund = combinations[key] / coverageval
-                if abund >= args.min_samp_abund:
-                    covar_fh.write(f"{key}\t{combinations[key]}\t{abund:.3f}\n")
-            else:
-                break
+                        try:
+                            tiles[start_pos][end_pos] += col_reads[SNP_sequence][start_end]
+                        except:
+                            tiles[start_pos][end_pos] = col_reads[SNP_sequence][start_end]
+        if ntsingles and len(ntsingles) <= args.max_dist:
+            for combo in getCombos(ntsingles, args.max_covar):
+                if not combo in ntcombinations:
+                    ntcombinations[combo] = sequence_count
+                else:
+                    ntcombinations[combo] += sequence_count
 
-        covar_fh.close()
+        if AAsingles and len(AAsingles) <= args.max_dist:
+            for combo in getCombos(AAsingles, args.max_covar):
+                if not combo in AAcombinations:
+                    AAcombinations[combo] = sequence_count
+                else:
+                    AAcombinations[combo] += sequence_count
+    for combinations, samp_tag in ((ntcombinations, ''), (AAcombinations, '_AA')):
+        try:
+            max_count = max(combinations.values())
+        except:
+            pass
+        else:
+            if max_count >= args.min_count:
+                covar_fh = open(samp+samp_tag+'_covars.tsv', "w")
+                covar_fh.write(samp+"("+str(sam_read_count)+")\n")
+                covar_fh.write("Co-Variants\tCount\tAbundance\n")
+                sortedcombos = sorted(combinations, key=combinations.__getitem__, reverse=True)
+                for key in sortedcombos:
+                    if combinations[key] >= args.min_count:
+                        if args.wgs == 0:
+                            abund = combinations[key] / sam_read_count
+                        elif args.wgs == 1:
+                            splitcombos = key.split()
+                            if not samp_tag:
+                                startcovPos = ''
+                                for c in splitcombos[0].strip('ATGC'):
+                                    if c.isdigit():
+                                        startcovPos += c
+                                    else:
+                                        break
+                                endcovPos = ''
+                                split_mut = splitcombos[-1].split('(')[0]
+                                if 'del' in split_mut:
+                                    pos_string = split_mut.strip('ATGCN').split('-')[1]
+                                else:
+                                    pos_string = split_mut.strip('ATGCN')
+                                for c in pos_string:
+                                    if c.isdigit():
+                                        endcovPos += c
+                                    else:
+                                        break
+                                if not endcovPos:
+                                    print(key)
+                                    print(split_mut)
+                                    print(pos_string)
+                            else:
+                                startcovPos = aa_centered[splitcombos[0]][0]
+                                endcovPos = aa_centered[splitcombos[-1]][-1]
+                            if startcovPos == endcovPos:
+                                abund = combinations[key] / coverage[int(startcovPos)]
+                                    
+                            elif args.covar_tile_coverage == 0:
+                                coveragevals = []
+                                for i in range(int(startcovPos), int(endcovPos)+1):
+                                    coveragevals.append(coverage[i])
+                                    abund = combinations[key] / min(coveragevals)
+                            elif args.covar_tile_coverage == 1:
+                                coverageval = 0
+                                for tile_start in tiles:
+                                    if int(startcovPos) >= int(tile_start):
+                                        for tile_end in tiles[tile_start]:
+                                            if int(endcovPos) <= int(tile_end):
+                                                coverageval += tiles[tile_start][tile_end]
+                                abund = combinations[key] / coverageval
+                        if abund >= args.min_samp_abund:
+                            covar_fh.write(f"{key}\t{combinations[key]}\t{abund:.3f}\n")
+                    else:
+                        break
+
+                covar_fh.close()
 
 def faSAMparse(args, ref, file): # process SAM files
 
     samp=file[0: -4]
     print(f"Starting {samp} processing")
-    # print(ref[1])
-    nt_call_dict_dict = {}
-    indel_dict = {}
-    ins_nt_dict = {}
-    seq_species = {}
-    sam_read_count = 0
-    sam_line_count = 0
-    coverage = {}
-    if args.read == 1:
-        readID = ''
-        reads_fh = open(samp+'_reads.tsv', "w")
+    nt_call_dict_dict, ins_nt_dict, reads_list, col_reads, sam_read_count, coverage = SAM_line_parser(args, ref, file)
 
-    sam_fh = open(file, "r")
-    for line in sam_fh:
-        if not line.startswith('@'): # ignore header lines
-            splitline = line.split("\t")
-            if ref[0].upper().startswith(splitline[2].upper()): # check map ID matches referecne ID
-                if int(splitline[4]) > 0:  # Check mapping score is positive
+    if sam_read_count == 0:
+        print(f"No Reads for {samp}")
+    else:
 
-                    reads_count=1
-                    if args.use_count == 1: # get the unique sequence counts
-                        if '-' in splitline[0] and '=' in splitline[0]:
-                            try:
-                                eq_split = splitline[0].split('=')
-                                dash_split = splitline[0].split('-')
-                                if len(eq_split[-1]) > len(dash_split[-1]):
-                                    reads_count=int(dash_split[-1])
-                                else:
-                                    reads_count=int(eq_split[-1])
-                            except:
-                                pass
+        indel_dict = {}
+        nt_to_AA_dict = {}
 
-                        elif '-' in splitline[0]:
-                            try:
-                                reads_count=int(splitline[0].split('-')[-1])
-                            except:
-                                # print(splitline[0])
-                                pass
-
-                        elif '=' in splitline[0]:
-                            try:
-                                reads_count=int(splitline[0].split('=')[-1])
-                            except:
-                                pass
-
-                    sam_read_count += reads_count
-                    sam_line_count += 1
-
-                    # if sam_read_count % 5000 == 0:
-                        # print(f"At read {sam_read_count} of {samp}")
-                    # if sam_line_count % 5000 == 0:
-                        # print(f"At line {sam_line_count} of {samp} SAM")
-
-                    CIGAR = splitline[5]
-                    Pos = int(splitline[3])
-
-                    readID = splitline[0]
-                    query_seq = splitline[9].upper()
-                    run_length = 0
-                    query_pos = 0
-                    q_pars_pos = 0
-                    mutations = []
-                    offsets = {}
-                    running_offset = 0
-
-                    for C in CIGAR: # process sequence based on standard CIGAR line
-                        if C == 'M' or C == 'I' or C == 'D' or C == 'S' or C == 'H':
-                            if C == 'S':
-                                query_pos = query_pos + run_length
-                            # if C == 'H':
-
-                            if C == 'I':
-                                if query_pos > 0:
-                                    # add insertion to dict
-                                    iPos = q_pars_pos+Pos
-
-                                    running_offset += run_length
-
-                                    iSeq = query_seq[query_pos: query_pos+run_length]
-                                    istring = str(iPos)+'-insert'+iSeq
-
-                                    if args.AAreport == 1 and (run_length % 3 == 0):
-
-                                        iProt = ''
-                                        if iPos % 3 == 1:
-                                            for x in range(0, (run_length//3)):
-                                                AA = AAcall(iSeq[x*3]+iSeq[x*3+1]+iSeq[x*3+2])
-                                                iProt = iProt + AA
-                                            istring = istring + '(' + str(((iPos-1)//3)+1) + iProt + ')'
-                                        elif iPos % 3 == 2:
-                                            if query_pos > 0:
-                                                ipSeq = query_seq[query_pos-1:query_pos+run_length+5]
-                                            else:
-                                                ipSeq = "XXX"+query_seq[query_pos+2:query_pos+run_length+5]
-                                            for x in range(0, (run_length//3)+1):
-                                                AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
-                                                iProt = iProt + AA
-                                            istring = istring + '(' + ref[3][1][(iPos-1)//3] + str(((iPos-1)//3)+1) + iProt + ')'
-                                        else:
-                                            if query_pos > 1:
-                                                ipSeq = query_seq[query_pos-2:query_pos+run_length+4]
-                                            else:
-                                                ipSeq = "XXX"+query_seq[query_pos+1:query_pos+run_length+4]
-                                            for x in range(0, (run_length//3)+2):
-                                                AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
-                                                iProt = iProt + AA
-                                            istring = istring + '(' + ref[3][1][(iPos-1)//3] + str(((iPos-1)//3)+1) + iProt + ')' #  '-' + str(((iPos-1)//3)+2) +
-                                    elif args.AAreport == 1:
-                                        istring = istring+'(fs)'
-
-                                    mutations.append(istring)
-
-                                    if args.nt_call == 1:
-                                        try:
-                                            ins_nt_dict[iPos]
-                                        except:
-                                            ins_nt_dict[iPos] = {istring : reads_count}
-                                        else:
-                                            try:
-                                                ins_nt_dict[iPos][istring] += reads_count
-                                            except:
-                                                ins_nt_dict[iPos][istring] = reads_count
-
-                                    if args.indel ==  1:
-                                        try:
-                                            indel_dict[istring]
-                                        except:
-                                            indel_dict[istring] = reads_count
-                                        else:
-                                            indel_dict[istring] += reads_count
-
-                                    query_pos = query_pos + run_length
-
-                            elif C == 'D':
-
-                                delPos = q_pars_pos+Pos
-                                delnts = ref[1][delPos-1:delPos+run_length-1]
-                                delstring = delnts+str(delPos)+'-'+str(delPos+run_length-1)+'Del'
-                                # delstring = delnts + str(q_pars_pos+Pos)+'-'+str(q_pars_pos+Pos+run_length-1)+'Del'
-
-                                running_offset -= run_length
-                                for i in range(delPos+1, delPos+1+run_length):
-                                    offsets[i] = running_offset
-
-
-                                if args.AAreport == 1 and (run_length % 3 == 0) and not ((delPos) % 3 == 1 ):
-                                    if (delPos) % 3 == 2:
-                                        newcodon = query_seq[query_pos-1:query_pos+2]
-                                        newAArefpos = (delPos-1) // 3
-                                        delstring = delstring + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)+1] + str(newAArefpos+1) + '-' + str(newAArefpos+1+run_length//3) + AAcall(newcodon)
-                                        for i in range(0, run_length//3):
-                                            delstring = delstring + '-'
-                                        delstring = delstring + ')'
-                                    else:
-                                        newcodon = query_seq[query_pos-2:query_pos+1]
-                                        newAArefpos = (delPos-1) // 3
-                                        delstring = delstring + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)+1] + str(newAArefpos+1) + '-' + str(newAArefpos+1+run_length//3) + AAcall(newcodon)
-                                        for i in range(0, run_length//3):
-                                            delstring = delstring + '-'
-                                        delstring = delstring + ')'
-                                elif args.AAreport == 1 and (run_length % 3 == 0):
-                                    newAArefpos = (delPos-1) // 3
-                                    if run_length // 3 == 1:
-
-                                        delstring = delstring + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)] + str(newAArefpos+1) + '-' #  + str(newAArefpos+run_length//3)
-
-                                    else:
-                                        delstring = delstring + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)] + str(newAArefpos+1) + '-' + str(newAArefpos+run_length//3)
-                                        for i in range(0, run_length//3):
-                                            delstring = delstring + '-'
-                                    delstring = delstring + ')'
-                                elif args.AAreport == 1:
-                                    delstring = delstring + '(fs)'
-
-                                mutations.append(delstring)
-
-                                if args.nt_call == 1:
-                                    for N in range(delPos, delPos+int(run_length)):
-                                        try:
-                                            nt_call_dict_dict[N]
-                                        except:
-                                            nt_call_dict_dict[N] = {'A' : 0,
-                                                                    'T' : 0,
-                                                                    'C' : 0,
-                                                                    'G' : 0,
-                                                                    '-' : 0}
-                                            nt_call_dict_dict[N]['-'] = reads_count
-                                        else:
-                                            nt_call_dict_dict[N]['-'] += reads_count
-
-                                if args.indel ==  1:
-                                    try:
-                                        indel_dict[delstring]
-                                    except:
-                                        indel_dict[delstring] = int(reads_count)
-                                    else:
-                                        indel_dict[delstring] += int(reads_count)
-
-                                q_pars_pos = q_pars_pos + run_length
-
-                            elif C == 'M':
-                                offset = q_pars_pos-query_pos
-                                refPos = Pos+offset
-
-                                for ntPos in range(query_pos, query_pos+run_length):
-                                    offsets[refPos+ntPos+1] = running_offset
-                                    if query_seq[ntPos] == 'N':
-                                        if args.AAreport == 0 or args.AAcodonasMNP == 0:
-                                            mutations.append(ref[1][refPos+ntPos-1]+str(refPos+ntPos)+query_seq[ntPos])
-                                    if query_seq[ntPos] == 'A' or query_seq[ntPos] == 'T' or query_seq[ntPos] == 'C' or query_seq[ntPos] == 'G' or query_seq[ntPos] == '-':
-                                        if query_seq[ntPos] != ref[1][refPos+ntPos-1]:
-                                            if args.AAreport == 1 and args.AAcodonasMNP == 0:
-                                                AAinfo = singletCodon(refPos+ntPos, query_seq[ntPos], ref[1])
-                                                mutations.append(ref[1][refPos+ntPos-1]+str(refPos+ntPos)+query_seq[ntPos]+'('+ref[3][1][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')')
-                                            else:
-                                                mutations.append(ref[1][refPos+ntPos-1]+str(refPos+ntPos)+query_seq[ntPos])
-                                        if args.nt_call == 1:
-                                            try:
-                                                nt_call_dict_dict[refPos+ntPos]
-                                            except:
-                                                nt_call_dict_dict[refPos+ntPos] = {'A' : 0,
-                                                                                   'T' : 0,
-                                                                                   'C' : 0,
-                                                                                   'G' : 0,
-                                                                                   '-' : 0}
-                                                nt_call_dict_dict[refPos+ntPos][query_seq[ntPos]] = reads_count
-                                            else:
-                                                nt_call_dict_dict[refPos+ntPos][query_seq[ntPos]] += reads_count
-
-
-                                q_pars_pos = q_pars_pos + run_length
-                                query_pos = query_pos + run_length
-
-                            run_length = 0
-
-
-                        else:
-                            run_length = (10 * run_length) + int(C)
-                    # END CIGAR PARSE
-
-                    if len(mutations) == 0: # record reference counts
-                        if args.wgs == 0:
-                            try:
-                                seq_species['Reference'] += reads_count
-                            except:
-                                seq_species['Reference'] = reads_count
-                            if args.read == 1:
-                                reads_fh.write(f"{readID}\tReference\n")
-                        else:
-                            try:
-                                seq_species[str(Pos)+' Reference '+str(Pos+q_pars_pos)] += reads_count
-                            except:
-                                seq_species[str(Pos)+' Reference '+str(Pos+q_pars_pos)] = reads_count
-                            if args.read == 1:
-                                reads_fh.write(f"{readID}\t{str(Pos)} Reference {str(Pos+q_pars_pos)}\n")
-
-                    else: # record variants and counts
-                        if args.AAreport == 1 and args.AAcodonasMNP == 1:
-                            MNPs = []
-                            curMNP = ''
-                            last_codon = -1
-                            fshift = 0
-                            for mut in mutations:
-                                if '-' in mut:
-                                    startPos = int(mut.split('-')[0].strip('ATCGN'))
-                                else:
-                                    startPos = int(mut.split('(')[0].strip('ATCGN'))
-                                endPos = startPos
-                                if 'Del' in mut:
-                                    endPos = int(mut.split('Del')[0].split('-')[1])
-
-                                startcodon = (((startPos)-1)//3)+1
-                                endcodon = ((endPos-1)//3)+1
+        if args.AAreport == 1 and (args.seq == 1 or args.read == 1 or args.covar == 1 or args.indel == 1):
+            for SNP_sequence in col_reads:
+                if 'Reference' == SNP_sequence:
+                    pass
+                elif args.AAcodonasMNP == 1:
+                    try:
+                        col_reads[SNP_sequence]['AA_sequence']
+                    except:
+                        MNPs = []
+                        curMNP = ''
+                        last_codon = -1
+                        fshift = 0
+                        for mut in SNP_sequence.split(' '):
+                            if mut.isnumeric():
                                 if curMNP:
-                                    if 'fs' in mut:
-                                        mutshift = 0
-                                        if 'insert' in mut:
-                                            mutshift += len(mut.split('(')[0].split('insert')[1])
-                                        else:
-                                            mutshift -= len(mut.split('-')[0].strip('0123456789'))
+                                    MNPs.append(curMNP)
+                                MNPs.append([[mut, mut]])
+                                curMNP = ''
+                                continue
+                            startPos = int(mut.split('-')[0].strip('ATCGN'))
+                            endPos = startPos
+                            if 'del' in mut:
+                                endPos = int(mut.split('-')[1].strip('del'))
 
-                                        if (fshift % 3) == 0:
-                                            if startcodon == last_codon:
-                                                curMNP.append([mut, startPos])
-                                                fshift += mutshift
-                                            else:
-                                                MNPs.append(curMNP)
-                                                curMNP = [[mut, startPos]]
-                                                fshift = mutshift
-
-                                        else:
-                                            if startcodon < last_codon + 5:
-                                                curMNP.append([mut, startPos])
-                                                fshift += mutshift
-                                            else:
-                                                ## todo splitfsMNP() make process
-                                                fsfreeMNP = []
-                                                for SNP in curMNP:
-                                                    if 'fs' in SNP:
-                                                        if fsfreeMNP:
-                                                            MNPs.append(fsfreeMNP)
-                                                            fsfreeMNP = []
-                                                        MNPs.append([SNP])
-                                                    else:
-                                                        fsfreeMNP.append(SNP)
-                                                if fsfreeMNP:
-                                                    MNPs.append(fsfreeMNP)
-                                                curMNP = [[mut, startPos]]
-                                                fshift = mutshift
+                            startcodon = (((startPos)-1)//3)+1
+                            endcodon = ((endPos-1)//3)+1
+                            if curMNP:
+                                if 'fs' in mut:
+                                    mutshift = 0
+                                    if 'insert' in mut:
+                                        mutshift += len(mut.split('(')[0].split('insert')[1])
                                     else:
+                                        mutshift -= len(mut.split('-')[0].strip('0123456789'))
+
+                                    if (fshift % 3) == 0:
                                         if startcodon == last_codon:
                                             curMNP.append([mut, startPos])
+                                            fshift += mutshift
                                         else:
-                                            if (fshift % 3) == 0:
-                                                MNPs.append(curMNP)
-                                            else:
-                                                ## splitfsMNP() make process
-                                                fsfreeMNP = []
-                                                for SNP in curMNP:
-                                                    if 'fs' in SNP:
-                                                        if fsfreeMNP:
-                                                            MNPs.append(fsfreeMNP)
-                                                            fsfreeMNP = []
-                                                        MNPs.append([SNP])
-                                                    else:
-                                                        fsfreeMNP.append(SNP)
-                                                if fsfreeMNP:
-                                                    MNPs.append(fsfreeMNP)
+                                            MNPs.append(curMNP)
                                             curMNP = [[mut, startPos]]
-                                            fshift = 0
-                                else:
-                                    curMNP = [[mut, startPos]]
-                                last_codon = endcodon
-                            if curMNP:
-                                MNPs.append(curMNP)
+                                            fshift = mutshift
 
-                            if MNPs:
-                                combinedmut = []
-                                for entry in MNPs:
-                                    if len(entry) > 1:
+                                    else:
+                                        if startcodon < last_codon + 5:
+                                            curMNP.append([mut, startPos])
+                                            fshift += mutshift
+                                        else:
+                                            ## todo splitfsMNP() make process
+                                            fsfreeMNP = []
+                                            for SNP in curMNP:
+                                                if 'fs' in SNP:
+                                                    if fsfreeMNP:
+                                                        MNPs.append(fsfreeMNP)
+                                                        fsfreeMNP = []
+                                                    MNPs.append([SNP])
+                                                else:
+                                                    fsfreeMNP.append(SNP)
+                                            if fsfreeMNP:
+                                                MNPs.append(fsfreeMNP)
+                                            curMNP = [[mut, startPos]]
+                                            fshift = mutshift
+                                else:
+                                    if startcodon == last_codon:
+                                        curMNP.append([mut, startPos])
+                                    else:
+                                        if (fshift % 3) == 0:
+                                            MNPs.append(curMNP)
+                                        else:
+                                            ## splitfsMNP() make process
+                                            fsfreeMNP = []
+                                            for SNP in curMNP:
+                                                if 'fs' in SNP:
+                                                    if fsfreeMNP:
+                                                        MNPs.append(fsfreeMNP)
+                                                        fsfreeMNP = []
+                                                    MNPs.append([SNP])
+                                                else:
+                                                    fsfreeMNP.append(SNP)
+                                            if fsfreeMNP:
+                                                MNPs.append(fsfreeMNP)
+                                        curMNP = [[mut, startPos]]
+                                        fshift = 0
+                            else:
+                                curMNP = [[mut, startPos]]
+                            last_codon = endcodon
+                        if curMNP:
+                            MNPs.append(curMNP)
+
+                        if MNPs:
+                            combinedmut = []
+                            for entry in MNPs:
+                                if len(entry) > 1:
+                                    nt_to_AA_key = []
+                                    for snpmut in entry:
+                                        nt_to_AA_key.append(snpmut[0])
+                                    nt_to_AA_key = ' '.join(nt_to_AA_key)
+                                    try:
+                                        newmut = nt_to_AA_dict[nt_to_AA_key]
+                                    except:
                                         MNPreport = ''
                                         mutntseq = ''
                                         orfstartpos = entry[0][1]
                                         orfendpos = entry[-1][1]
-                                        if 'Del' in entry[-1][0]:
+                                        if 'del' in entry[-1][0]:
                                             orfendpos += len(entry[-1][0].split('-')[0].strip('0123456789')) - 1
 
                                         for i in range(0, len(entry)):
@@ -1043,13 +1277,13 @@ def faSAMparse(args, ref, file): # process SAM files
                                                 if entry[i][1] > entry[i-1][1]:
                                                     if 'insert' in entry[i-1][0]:
                                                         mutntseq += ref[1][entry[i-1][1]-1:entry[i][1]-1]
-                                                    elif 'Del' in entry[i-1][0]:
+                                                    elif 'del' in entry[i-1][0]:
                                                         mutntseq += ref[1][entry[i-1][1]+len(entry[i-1][0].split('-')[0].strip('0123456789')):entry[i][1]-1]
                                                     else:
                                                         mutntseq += ref[1][entry[i-1][1]:entry[i][1]-1]
                                             if 'insert' in curPM:
                                                 mutntseq += curPM.split('(')[0].split('insert')[1]
-                                            elif 'Del' in curPM:
+                                            elif 'del' in curPM:
                                                 pass
                                             else:
                                                 mutntseq += curPM[-1]
@@ -1075,64 +1309,91 @@ def faSAMparse(args, ref, file): # process SAM files
                                         wtAAseq = ref[3][1][startcodonpos-1:endcodonpos]
                                         mutAAseq = ''
                                         for i in range(0, (len(mutntseq)//3)):
-                                            try:
-                                                mutAAseq += AAcall(mutntseq[i*3:(i*3)+3])
-                                            except:
-                                                mutAAseq += '(fs)'
+                                            mutAAseq += AAcall(mutntseq[i*3:(i*3)+3])
+                                        if len(mutntseq) % 3 != 0:
+                                            mutAAseq += 'fs'
+                                        if len(mutAAseq) < len(wtAAseq):
+                                            mutAAseq += 'del'
+                                            mutntseq += 'del'
+                                        elif len(mutAAseq) > len(wtAAseq):
+                                            mutAAseq += 'insert'
+                                            mutntseq += 'insert'
                                         if startcodonpos == endcodonpos:
-                                            combinedmut.append(f"{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}{mutAAseq})")
+                                            newmutstring = f"{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}{mutAAseq})"
                                         else:
-                                            combinedmut.append(f"{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}-{endcodonpos}{mutAAseq})")
+                                            newmutstring = f"{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}-{endcodonpos}{mutAAseq})"
+
+                                        nt_to_AA_dict[nt_to_AA_key] = newmutstring
+                                        newmut = newmutstring
+                                else:
+                                    if entry[0][0].isnumeric():
+                                        newmut = entry[0][0]
+                                    elif entry[0][0] in nt_to_AA_dict:
+                                        newmut = nt_to_AA_dict[entry[0][0]]
                                     else:
-                                        curPM = entry[0][0]
-                                        if 'Del' in  curPM or 'insert' in curPM:
-                                            combinedmut.append(curPM)
-                                        else:
-                                            ORFPos = entry[0][1]
-                                            AAinfo = singletCodon(ORFPos, curPM[-1], (ref[1]))
-                                            PM = curPM[0] + str(ORFPos) + curPM[-1] + "(" + ref[3][1][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')'
-                                            combinedmut.append(PM)
-                            mutations = combinedmut
-
-                        mutations = " ".join(mutations)
-
-                        if args.wgs == 0:
+                                        mutstring = fasta_SNP_call(entry[0][0], ref)
+                                        nt_to_AA_dict[entry[0][0]] = mutstring
+                                        newmut = mutstring
+                                combinedmut.append(newmut)
+                                if args.indel == 1:
+                                    if 'del' in newmut or 'insert' in newmut:
+                                        try:
+                                            indel_dict[newmut] += sum(col_reads[SNP_sequence].values())
+                                        except:
+                                            indel_dict[newmut] = sum(col_reads[SNP_sequence].values())
+                        col_reads[SNP_sequence]['AA_sequence'] = " ".join(combinedmut)
+                else:
+                    try:
+                        col_reads[SNP_sequence]['AA_sequence']
+                    except:
+                        mutations =[]
+                        for mut in SNP_sequence.split(' '):
+                            if mut.isnumeric():
+                                newmut = mut
                             try:
-                                seq_species[mutations] += reads_count
+                                newmut = nt_to_AA_dict[mut]
                             except:
-                                seq_species[mutations] = reads_count
-                            if args.read == 1:
-                                reads_fh.write(f"{readID}\t{mutations}\n")
-                        else:
+                                mutstring = fasta_SNP_call(mut, ref)
+                                nt_to_AA_dict[mut] = mutstring
+                                newmut = mutstring
+                            mutations.append(newmut)
+                            if args.indel == 1:
+                                if 'del' in mut or 'insert' in mut:
+                                    try:
+                                        indel_dict[newmut] += sum(col_reads[SNP_sequence].values())
+                                    except:
+                                        indel_dict[newmut] = sum(col_reads[SNP_sequence].values())
+                        col_reads[SNP_sequence]['AA_sequence'] = " ".join(mutations)
+
+        elif args.indel == 1:
+            for SNP_sequence in col_reads:
+                if 'del' in SNP_sequence or 'insert' in SNP_sequence:
+                    for mut in SNP_sequence.split(' '):
+                        if 'del' in mut or 'ins' in mut:
                             try:
-                                seq_species[str(Pos)+' '+mutations+' '+str(Pos+q_pars_pos)] += reads_count
+                                indel_dict[mut] += sum(col_reads[SNP_sequence].values())
                             except:
-                                seq_species[str(Pos)+' '+mutations+' '+str(Pos+q_pars_pos)] = reads_count
-                            if args.read == 1:
-                                reads_fh.write(f"{readID}\t{str(Pos)} {mutations} {str(Pos+q_pars_pos)}\n")
+                                indel_dict[mut] = sum(col_reads[SNP_sequence].values())
 
-                    for i in range(Pos, Pos+q_pars_pos+1): # update coverage
-                        try:
-                            coverage[i] += reads_count
-                        except:
-                            coverage[i] = reads_count
-    if args.read == 1:
-        reads_fh.close()
-    sam_fh.close()
-    # END SAM LINES
-    print(f"End SAM parse for {samp}")
+        if args.read == 1:
+            reads_fh = open(samp+'_reads.tsv', "w")
+            for line in reads_list:
+                reads_fh.write(f"{line[0]}\t{line[2]} {line[1]} {line[3]}\n")
+            reads_fh.close()
 
-    if sam_read_count == 0:
-        print(f"No Reads for {samp}")
 
-    else:
         if args.seq == 1: # output the sequence
-            printUniqueSeq(samp, sam_read_count, seq_species, coverage, args)
+            printUniqueSeq(samp, sam_read_count, col_reads, coverage, args)
             # print(f"End unqiue seq out for {samp}")
 
         if args.indel == 1 and len(indel_dict) > 0: # output indels, if there are any
             printInDels(samp, sam_read_count, indel_dict, coverage, args)
             # print(f"End indel out for {samp}")
+
+        if args.covar == 1: # output covariants
+            printCovars(samp, sam_read_count, col_reads, coverage, args, {})
+            # print(f"End covar out for {samp}")
+
 
         if args.nt_call == 1: # out put nt calls
             ntcall_lines = {'line' : {},
@@ -1146,9 +1407,9 @@ def faSAMparse(args, ref, file): # process SAM files
             sorted_Pos = sorted(nt_call_dict_dict)
             if args.AAreport == 1:
 
-                ntcall_fh.write("Position\tref NT\tAA Pos\tref AA\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
+                ntcall_fh.write("Position\tref NT\tAA Pos\tref AA\tA\tT\tC\tG\t-\tN\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
                 if args.ntvar == 1:
-                    ntcallv_fh.write("Position\tref NT\tAA Pos\tref AA\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
+                    ntcallv_fh.write("Position\tref NT\tAA Pos\tref AA\tA\tT\tC\tG\t-\tN\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
                 consensus = {}
                 for Pos in sorted_Pos:
 
@@ -1168,21 +1429,23 @@ def faSAMparse(args, ref, file): # process SAM files
                             i = 1
                             for insertion in ins_nt_dict[Pos]:
                                 iPos = Pos+(i/1000)
-                                split_ins = insertion.split('(')
-                                i_nts = split_ins[0].split('insert')[1]
-                                i_AAs = split_ins[1]
+                                i_nts = insertion.split('insert')[1]
+                                try:
+                                    i_AAs = nt_to_AA_dict[insertion].split('(')[1].strip(')')
+                                except:
+                                    i_AAs = fasta_SNP_call(insertion, ref).split('(')[1].strip(')')
                                 AA_pos = ((Pos-1)//3)+1
                                 iabund = ins_nt_dict[Pos][insertion]/total
-                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t{AA_pos}\t-\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
+                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t{AA_pos}\t-\t\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
                                 ntcall_lines['line'][iPos] += f"\t{iabund:.3f}"
                                 if 'fs' in i_AAs:
-                                    ntcall_lines['line'][iPos] += f"\tfs"
+                                    ntcall_lines['line'][iPos] += f"\t\tfs"
                                 else:
                                     split_AAs = i_AAs.split(str(AA_pos))
                                     if split_AAs[0]:
-                                        ntcall_lines['line'][iPos] += f"\t{split_AAs[0]}->{split_AAs[1][:-1]}"
+                                        ntcall_lines['line'][iPos] += f"\t\t{split_AAs[0]}->{split_AAs[1][:-1]}"
                                     else:
-                                        ntcall_lines['line'][iPos] += f"\t{split_AAs[1][:-1]}"
+                                        ntcall_lines['line'][iPos] += f"\t\t{split_AAs[1]}"
                                 if ( ins_nt_dict[Pos][insertion] >= args.min_count) and (iabund >= args.min_samp_abund):
                                     ntcall_lines['variant'][iPos] = 1
                                 i += 1
@@ -1193,7 +1456,8 @@ def faSAMparse(args, ref, file): # process SAM files
                         sorted_calls = sorted(Pos_calls, key=Pos_calls.__getitem__, reverse=True)
 
                         ntcall_lines['line'][Pos] = (str(Pos)+"\t"+ref[1][Pos-1]+"\t"+str(((Pos-1)//3)+1)+"\t"+ref[3][1][((Pos-1)//3)])
-                        ntcall_lines['line'][Pos] +=("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']))
+                        ntcall_lines['line'][Pos] +=("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C']))
+                        ntcall_lines['line'][Pos] +=("\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-'])+str(nt_call_dict_dict[Pos]['N']))
                         ntcall_lines['line'][Pos] +=("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]]))
                         ntcall_lines['line'][Pos] +=(f"\t{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}")
 
@@ -1252,9 +1516,9 @@ def faSAMparse(args, ref, file): # process SAM files
                         ntcallv_fh.close()
 
             else:
-                ntcall_fh.write("Position\tref NT\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
+                ntcall_fh.write("Position\tref NT\tA\tT\tC\tG\t-\t\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
                 if args.ntvar == 1:
-                    ntcallv_fh.write("Position\tref NT\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
+                    ntcallv_fh.write("Position\tref NT\tA\tT\tC\tG\t-\t\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
 
                 for Pos in sorted_Pos:
                     try:
@@ -1289,7 +1553,8 @@ def faSAMparse(args, ref, file): # process SAM files
                         sorted_calls = sorted(Pos_calls, key=Pos_calls.__getitem__, reverse=True)
 
                         ntcall_lines['line'][Pos] = str(Pos)+"\t"+ref[1][Pos-1]
-                        ntcall_lines['line'][Pos] += "\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-'])
+                        ntcall_lines['line'][Pos] += "\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])\
+                            +"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']+str(nt_call_dict_dict[Pos]['N']))
                         ntcall_lines['line'][Pos] += "\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}"
                         if not ref[1][Pos-1] == sorted_calls[0]:
                             ntcall_lines['variant'][Pos] = 1
@@ -1317,397 +1582,148 @@ def faSAMparse(args, ref, file): # process SAM files
                 ntcallv_fh.close()
             # END NT CALL OUT
             # print(f"End nt call out for {samp}")
-        if args.covar == 1: # output covariants
-            printCovars(samp, sam_read_count, seq_species, coverage, args, {})
-            # print(f"End covar out for {samp}")
     print(f'End {file} main output')
 
 def gbSAMparse(args, ref, file): # process SAM files
 
     samp=file[0: -4]
     print(f"Starting {samp} processing")
-    nt_call_dict_dict = {}
-    indel_dict = {}
-    ins_nt_dict = {}
-    seq_species = {}
-    aa_seq_species = {}
-    aa_genome_pos_dict = {}
-    sam_read_count = 0
-    sam_line_count = 0
-    coverage = {}
-    if args.read == 1:
-        readID = ''
-        reads_fh = open(samp+'_reads.tsv', "w")
+    nt_call_dict_dict, ins_nt_dict, reads_list, col_reads, sam_read_count, coverage = SAM_line_parser(args, ref, file)
 
-    sam_fh = open(file, "r")
-    for line in sam_fh:
-        if not line.startswith('@'): # ignore header lines
-            splitline = line.split("\t")
+    if sam_read_count == 0:
+        print(f"No Reads for {samp}")
+    else:
 
-            if ref[0].upper().startswith(splitline[2].upper()): # check map ID matches referecne ID
-                if int(splitline[4]) > 0:  # Check mapping score is positive
+        indel_dict = {}
+        aa_genome_pos_dict = {}
+        nt_to_AA_dict = {}
 
-                    reads_count=1
-                    if args.use_count == 1: # get the unique sequence counts
-                        if '-' in splitline[0] and '=' in splitline[0]:
-                            eq_split = splitline[0].split('=')
-                            dash_split = splitline[0].split('-')
-                            if len(eq_split[-1]) > len(dash_split[-1]):
-                                reads_count=int(dash_split[-1])
-                            else:
-                                reads_count=int(eq_split[-1])
-
-                        elif '-' in splitline[0]:
+        if args.AAreport == 1 and (args.seq == 1 or args.covar == 1 or args.indel == 1 or args.read == 1):
+            for SNP_sequence in col_reads:
+                if 'Reference' == SNP_sequence:
+                    pass
+                elif args.AAcodonasMNP == 1:
+                    try:
+                        col_reads[SNP_sequence]['AA_sequence']
+                    except:
+                        mutorfs = {}
+                        for orf in ref[3]:
                             try:
-                                reads_count=int(splitline[0].split('-')[-1])
+                                nt_to_AA_dict[orf]
                             except:
-                                # print(splitline[0])
-                                pass
+                                nt_to_AA_dict[orf] = {}
+                            MNPs = []
+                            curMNP = ''
+                            last_codon = -1
 
-                        elif '=' in splitline[0]:
-                            try:
-                                reads_count=int(splitline[0].split('=')[-1])
-                            except:
-                                pass
-
-
-                    sam_read_count += reads_count
-                    sam_line_count += 1
-
-                    # if sam_read_count % 5000 == 0:
-                        # print(f"At read {sam_read_count} of {samp}")
-                    # if sam_line_count % 5000 == 0:
-                        # print(f"At line {sam_line_count} of {samp} SAM")
-
-                    CIGAR = splitline[5]
-                    Pos = int(splitline[3])
-
-                    readID = splitline[0]
-                    query_seq = splitline[9].upper()
-                    run_length = 0
-                    query_pos = 0
-                    q_pars_pos = 0
-                    mutations = []
-
-                    for C in CIGAR: # process sequence based on standard CIGAR line
-                        if C == 'M' or C == 'I' or C == 'D' or C == 'S' or C == 'H':
-                            if C == 'S':
-                                query_pos = query_pos + run_length
-                            # if C == 'H':
-
-
-                            if C == 'I':
-                                if query_pos > 0:
-                                    # add insertion to dict
-                                    iPos = q_pars_pos+Pos
-
-                                    iSeq = query_seq[query_pos: query_pos+run_length]
-                                    istring = str(iPos)+'-insert'+iSeq
-
-
-                                    if args.AAreport == 1:
-
-                                        iProt = ''
-                                        for orf in ref[3]:
-                                            orflength = 0
-                                            for rf in ref[3][orf]['reading frames']:
-                                                if iPos >= rf[0] and iPos <= rf[1]:
-                                                    iProt += "|(" + orf + ":"
-                                                    orfPos = 1 + iPos - rf[0] + orflength
-                                                    iProt += str(orfPos)+iSeq
-                                                    if (run_length % 3 == 0):
-                                                        if orfPos % 3 == 1:
-                                                            for x in range(0, (run_length//3)):
-                                                                AA = AAcall(iSeq[x*3]+iSeq[x*3+1]+iSeq[x*3+2])
-                                                        elif orfPos % 3 == 2:
-                                                            if query_pos > 0:
-                                                                ipSeq = query_seq[query_pos-1:query_pos+run_length+2]
-                                                            else:
-                                                                ipSeq = "XXX"+query_seq[query_pos+2:query_pos+run_length+2]
-                                                            for x in range(0, (run_length//3)+1):
-                                                                AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
-                                                        else:
-                                                            if query_pos > 1:
-                                                                ipSeq = query_seq[query_pos-2:query_pos+run_length+1]
-                                                            else:
-                                                                ipSeq = "XXX"+query_seq[query_pos+1:query_pos+run_length+1]
-
-                                                            for x in range(0, (run_length//3)+1):
-                                                                AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
-                                                        iProt = iProt + "(" + ref[3][orf]["AAs"][(orfPos-1)//3] + str(((orfPos-1)//3)+1) + AA
-                                                    else:
-                                                        iProt += "(" + str(((orfPos-1)//3)+1) + "fs"
-                                                    iProt += "))"
-                                                orflength += rf[1] - rf[0] + 1
-
-                                        istring += iProt
-
-
-
-
-                                    mutations.append(istring)
-
-                                    if args.nt_call == 1:
-                                        try:
-                                            ins_nt_dict[iPos]
-                                        except:
-                                            ins_nt_dict[iPos] = {istring : reads_count}
-                                        else:
-                                            try:
-                                                ins_nt_dict[iPos][istring] += reads_count
-                                            except:
-                                                ins_nt_dict[iPos][istring] = reads_count
-
-                                    if args.indel ==  1:
-                                        try:
-                                            indel_dict[istring]
-                                        except:
-                                            indel_dict[istring] = reads_count
-                                        else:
-                                            indel_dict[istring] += reads_count
-
-                                    query_pos = query_pos + run_length
-
-                            elif C == 'D':
-
-                                delPos = q_pars_pos+Pos
-                                delnts = ref[1][delPos-1:delPos+run_length-1]
-                                delstring = delnts+str(delPos)+'-'+str(delPos+run_length-1)+'Del'
-                                if args.AAreport == 1:
-                                    delProt = ""
-                                    for orf in ref[3]:
-                                        orflength = 0
-                                        for rf in ref[3][orf]['reading frames']:
-                                            if delPos > rf[1] or (delPos+run_length-1) < rf[0]:
-                                                pass
-                                            elif delPos >= rf[0] and (delPos+run_length-1) <= rf[1]:
-                                                delProt += "|(" + orf + ":"
-                                                orfPos = 1 + delPos - rf[0] + orflength
-                                                delProt +=  delnts + str(orfPos) + "-" + str(orfPos+run_length-1)+"Del"
-                                                startcodon = ((orfPos-1)//3)+1
-                                                if (run_length % 3 == 0):
-                                                    delProt += "("
-                                                    endcodon = ((orfPos+run_length-2)//3)+1
-                                                    delProt +=  ref[3][orf]["AAs"][startcodon-1:endcodon] +str(startcodon) + "-" + str(endcodon)
-                                                    if ((orfPos) % 3 == 1 ):
-                                                        delProt += 'del'
-                                                    else:
-                                                        if (orfPos) % 3 == 2:
-                                                            newcodon = query_seq[query_pos-1:query_pos+2]
-                                                        else:
-                                                            newcodon = query_seq[query_pos-2:query_pos+1]
-                                                        delProt += AAcall(newcodon) + 'del'
+                            fshift = 0
+                            for mut in SNP_sequence.split(' '):
+                                # if mut.isnumeric():
+                                    # continue
+                                # if (orf+':fs/') in mut or (orf+':Star') in mut:
+                                    # if curMNP:
+                                        # MNPs.append(curMNP)
+                                    # MNPs.append([[mut, -1]])
+                                    # curMNP = ''
+                                    # last_codon = -1
+                                    # continue
+                                startPos = int(mut.split('-')[0].strip('ATCGN'))
+                                endPos = startPos
+                                if 'del' in mut:
+                                    endPos = int(mut.split('-')[1].strip('del'))
+                                orflength = 0
+                                for rf in ref[3][orf]['reading frames']:
+                                    if startPos >= rf[0] and startPos <= rf[1]:
+                                        orfstartpos = 1 + startPos - rf[0] + orflength
+                                        orfendpos = 1 + endPos - rf[0] + orflength
+                                        startcodon = (((orfstartpos)-1)//3)+1
+                                        endcodon = ((orfendpos-1)//3)+1
+                                        if curMNP:
+                                            if 'fs' in mut:
+                                                mutshift = 0
+                                                if 'insert' in mut:
+                                                    mutshift += len(mut.split('|')[0].split('insert')[1])
                                                 else:
-                                                    delProt += "(" + str(startcodon) + "fs"
-                                                delProt += "))"
-                                                break
-                                            elif (delPos+run_length-1) >= rf[0] and (delPos+run_length-1) <= rf[1]:
-                                                delProt += "|(" + orf
-                                                if orflength == 0:
-                                                    delProt += ":Start_disrupted)"
+                                                    mutshift -= len(mut.split('-')[0].strip('0123456789'))
+
+                                                if (fshift % 3) == 0:
+                                                    if startcodon == last_codon:
+                                                        curMNP.append([mut, orfstartpos])
+                                                        fshift += mutshift
+                                                    else:
+                                                        MNPs.append(curMNP)
+                                                        curMNP = [[mut, orfstartpos]]
+                                                        fshift = mutshift
+
                                                 else:
-                                                    delProt += ":fs/Splicing_disrupted)"
-                                                break
+                                                    if startcodon < last_codon + 5:
+                                                        curMNP.append([mut, orfstartpos])
+                                                        fshift += mutshift
+                                                    else:
+                                                        ## splitfsMNP() make process
+                                                        fsfreeMNP = []
+                                                        for SNP in curMNP:
+                                                            if 'fs' in SNP:
+                                                                if fsfreeMNP:
+                                                                    MNPs.append(fsfreeMNP)
+                                                                    fsfreeMNP = []
+                                                                MNPs.append([SNP])
+                                                            else:
+                                                                fsfreeMNP.append(SNP)
+                                                        if fsfreeMNP:
+                                                            MNPs.append(fsfreeMNP)
+                                                        curMNP = [[mut, orfstartpos]]
+                                                        fshift = mutshift
                                             else:
-                                                delProt += "|(" + orf + ":fs/Splicing/Termination_disrupted)"
-                                                break
-                                            orflength += rf[1] - rf[0] + 1
-                                    delstring += delProt
-
-
-                                mutations.append(delstring)
-
-                                if args.nt_call == 1:
-                                    for N in range(q_pars_pos+Pos, q_pars_pos+Pos+int(run_length)):
-                                        try:
-                                            nt_call_dict_dict[N]
-                                        except:
-                                            nt_call_dict_dict[N] = {'A' : 0,
-                                                                    'T' : 0,
-                                                                    'C' : 0,
-                                                                    'G' : 0,
-                                                                    '-' : 0}
-                                            nt_call_dict_dict[N]['-'] = reads_count
+                                                if startcodon == last_codon:
+                                                    curMNP.append([mut, orfstartpos])
+                                                else:
+                                                    if (fshift % 3) == 0:
+                                                        MNPs.append(curMNP)
+                                                    else:
+                                                        ## splitfsMNP() make process
+                                                        fsfreeMNP = []
+                                                        for SNP in curMNP:
+                                                            if 'fs' in SNP:
+                                                                if fsfreeMNP:
+                                                                    MNPs.append(fsfreeMNP)
+                                                                    fsfreeMNP = []
+                                                                MNPs.append([SNP])
+                                                            else:
+                                                                fsfreeMNP.append(SNP)
+                                                        if fsfreeMNP:
+                                                            MNPs.append(fsfreeMNP)
+                                                    curMNP = [[mut, orfstartpos]]
+                                                    fshift = 0
                                         else:
-                                            nt_call_dict_dict[N]['-'] += reads_count
-
-                                if args.indel ==  1:
-                                    try:
-                                        indel_dict[delstring]
-                                    except:
-                                        indel_dict[delstring] = int(reads_count)
-                                    else:
-                                        indel_dict[delstring] += int(reads_count)
-
-                                q_pars_pos = q_pars_pos + run_length
-
-                            elif C == 'M':
-                                offset = q_pars_pos-query_pos
-                                refPos = Pos+offset
-
-                                for ntPos in range(query_pos, query_pos+run_length):
-                                    if query_seq[ntPos] == 'A' or query_seq[ntPos] == 'T' or query_seq[ntPos] == 'C' or query_seq[ntPos] == 'G' or query_seq[ntPos] == '-':
-                                        PMPos = refPos+ntPos
-                                        if query_seq[ntPos] != ref[1][PMPos-1]:
-                                            PM = ref[1][PMPos-1] +str(PMPos)+query_seq[ntPos]
-                                            if args.AAreport == 1 and args.AAcodonasMNP == 0:
-                                                for orf in ref[3]:
-                                                    orflength = 0
-                                                    for rf in ref[3][orf]['reading frames']:
-                                                        if PMPos >= rf[0] and PMPos <= rf[1]:
-                                                            ORFPos = PMPos-rf[0]+1+orflength
-                                                            AAinfo = singletCodon(ORFPos, query_seq[ntPos], (ref[3][orf]['nts']))
-                                                            PM += '|(' + orf + ":" + ref[1][PMPos-1] + str(ORFPos) + query_seq[ntPos] + "(" + ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+'))'
-                                                        orflength += rf[1] - rf[0] + 1
-                                            mutations.append(PM)
-                                        if args.nt_call == 1:
-                                            try:
-                                                nt_call_dict_dict[PMPos]
-                                            except:
-                                                nt_call_dict_dict[PMPos] = {'A' : 0,
-                                                                                   'T' : 0,
-                                                                                   'C' : 0,
-                                                                                   'G' : 0,
-                                                                                   '-' : 0}
-                                                nt_call_dict_dict[PMPos][query_seq[ntPos]] = reads_count
-                                            else:
-                                                nt_call_dict_dict[PMPos][query_seq[ntPos]] += reads_count
-
-
-                                q_pars_pos = q_pars_pos + run_length
-                                query_pos = query_pos + run_length
-
-                            run_length = 0
-
-
-                        else:
-                            run_length = (10 * run_length) + int(C)
-                    # END CIGAR PARSE
-
-
-
-                    if len(mutations) == 0: # record reference counts
-                        if args.wgs == 0:
-                            try:
-                                seq_species['Reference'] += reads_count
-                            except:
-                                seq_species['Reference'] = reads_count
-                            if args.read == 1:
-                                reads_fh.write(f"{readID}\tReference\n")
-                        else:
-                            try:
-                                seq_species[str(Pos)+' Reference '+str(Pos+q_pars_pos)] += reads_count
-                            except:
-                                seq_species[str(Pos)+' Reference '+str(Pos+q_pars_pos)] = reads_count
-                            if args.read == 1:
-                                reads_fh.write(f"{readID}\t{str(Pos)} Reference {str(Pos+q_pars_pos)}\n")
-
-                    else: # record variants and counts
-                        if args.AAreport == 1 and args.AAcodonasMNP == 1:
-
-                            mutorfs = {}
-                            for orf in ref[3]:
-                                MNPs = []
-                                curMNP = ''
-                                last_codon = -1
-
-                                fshift = 0
-                                for mut in mutations:
-                                    if (orf+':fs/') in mut or (orf+':Star') in mut:
+                                            curMNP = [[mut, orfstartpos]]
+                                        last_codon = endcodon
+                                    elif endPos >= rf[0] and startPos <= rf[0]:
                                         if curMNP:
                                             MNPs.append(curMNP)
                                         MNPs.append([[mut, -1]])
                                         curMNP = ''
-                                        last_codon = -1
-                                        continue
-                                    if '-' in mut:
-                                        startPos = int(mut.split('-')[0].strip('ATCGN'))
-                                    else:
-                                        startPos = int(mut.split('(')[0].strip('ATCGN'))
-                                    endPos = startPos
-                                    if 'Del' in mut:
-                                        endPos = int(mut.split('Del')[0].split('-')[1])
-                                    orflength = 0
-                                    for rf in ref[3][orf]['reading frames']:
-                                        if startPos >= rf[0] and startPos <= rf[1]:
+                                    orflength += rf[1] - rf[0] + 1
+                            if curMNP:
+                                MNPs.append(curMNP)
 
-                                            orfstartpos = 1 + startPos - rf[0] + orflength
-                                            orfendpos = 1 + endPos - rf[0] + orflength
-                                            startcodon = (((orfstartpos)-1)//3)+1
-                                            endcodon = ((orfendpos-1)//3)+1
-                                            if curMNP:
-                                                if 'fs' in mut:
-                                                    mutshift = 0
-                                                    if 'insert' in mut:
-                                                        mutshift += len(mut.split('|')[0].split('insert')[1])
-                                                    else:
-                                                        mutshift -= len(mut.split('-')[0].strip('0123456789'))
-
-                                                    if (fshift % 3) == 0:
-                                                        if startcodon == last_codon:
-                                                            curMNP.append([mut, orfstartpos])
-                                                            fshift += mutshift
-                                                        else:
-                                                            MNPs.append(curMNP)
-                                                            curMNP = [[mut, orfstartpos]]
-                                                            fshift = mutshift
-
-                                                    else:
-                                                        if startcodon < last_codon + 5:
-                                                            curMNP.append([mut, orfstartpos])
-                                                            fshift += mutshift
-                                                        else:
-                                                            ## splitfsMNP() make process
-                                                            fsfreeMNP = []
-                                                            for SNP in curMNP:
-                                                                if 'fs' in SNP:
-                                                                    if fsfreeMNP:
-                                                                        MNPs.append(fsfreeMNP)
-                                                                        fsfreeMNP = []
-                                                                    MNPs.append([SNP])
-                                                                else:
-                                                                    fsfreeMNP.append(SNP)
-                                                            if fsfreeMNP:
-                                                                MNPs.append(fsfreeMNP)
-                                                            curMNP = [[mut, orfstartpos]]
-                                                            fshift = mutshift
-                                                else:
-                                                    if startcodon == last_codon:
-                                                        curMNP.append([mut, orfstartpos])
-                                                    else:
-                                                        if (fshift % 3) == 0:
-                                                            MNPs.append(curMNP)
-                                                        else:
-                                                            ## splitfsMNP() make process
-                                                            fsfreeMNP = []
-                                                            for SNP in curMNP:
-                                                                if 'fs' in SNP:
-                                                                    if fsfreeMNP:
-                                                                        MNPs.append(fsfreeMNP)
-                                                                        fsfreeMNP = []
-                                                                    MNPs.append([SNP])
-                                                                else:
-                                                                    fsfreeMNP.append(SNP)
-                                                            if fsfreeMNP:
-                                                                MNPs.append(fsfreeMNP)
-                                                        curMNP = [[mut, orfstartpos]]
-                                                        fshift = 0
-                                            else:
-                                                curMNP = [[mut, orfstartpos]]
-                                            last_codon = endcodon
-                                        orflength += rf[1] - rf[0] + 1
-                                if curMNP:
-                                    MNPs.append(curMNP)
-
-                                if MNPs:
-                                    mutorfs[orf] = {}
-                                    for entry in MNPs:
-                                        if len(entry) > 1:
+                            if MNPs:
+                                mutorfs[orf] = {}
+                                for entry in MNPs:
+                                    if len(entry) > 1:
+                                        nt_to_AA_key = []
+                                        for snpmut in entry:
+                                            nt_to_AA_key.append(snpmut[0])
+                                        nt_to_AA_key = ' '.join(nt_to_AA_key)
+                                        if nt_to_AA_key in nt_to_AA_dict[orf]:
+                                            for SNP in nt_to_AA_dict[orf][nt_to_AA_key]:
+                                                mutorfs[orf][SNP] = nt_to_AA_dict[orf][nt_to_AA_key][SNP]
+                                        else:
                                             MNPreport = ''
                                             mutntseq = ''
                                             orfstartpos = entry[0][1]
                                             orfendpos = entry[-1][1]
-                                            if 'Del' in entry[-1][0]:
+                                            if 'del' in entry[-1][0]:
                                                 orfendpos += len(entry[-1][0].split('-')[0].strip('0123456789')) - 1
 
                                             for i in range(0, len(entry)):
@@ -1716,13 +1732,13 @@ def gbSAMparse(args, ref, file): # process SAM files
                                                     if entry[i][1] > entry[i-1][1]:
                                                         if 'insert' in entry[i-1][0]:
                                                             mutntseq += ref[3][orf]['nts'][entry[i-1][1]-1:entry[i][1]-1]
-                                                        elif 'Del' in entry[i-1][0]:
+                                                        elif 'del' in entry[i-1][0]:
                                                             mutntseq += ref[3][orf]['nts'][entry[i-1][1]+len(entry[i-1][0].split('-')[0].strip('0123456789')):entry[i][1]-1]
                                                         else:
                                                             mutntseq += ref[3][orf]['nts'][entry[i-1][1]:entry[i][1]-1]
                                                 if 'insert' in curPM:
                                                     mutntseq += curPM.split('|')[0].split('insert')[1]
-                                                elif 'Del' in curPM:
+                                                elif 'del' in curPM:
                                                     pass
                                                 else:
                                                     mutntseq += curPM[-1]
@@ -1748,135 +1764,159 @@ def gbSAMparse(args, ref, file): # process SAM files
                                             wtAAseq = ref[3][orf]['AAs'][startcodonpos-1:endcodonpos]
                                             mutAAseq = ''
                                             for i in range(0, (len(mutntseq)//3)):
-                                                try:
-                                                    mutAAseq += AAcall(mutntseq[i*3:(i*3)+3])
-                                                except:
-                                                    mutAAseq += '(fs)'
+                                                mutAAseq += AAcall(mutntseq[i*3:(i*3)+3])
+                                            if len(mutntseq) % 3 != 0:
+                                                mutAAseq += 'fs'
+                                            if len(mutAAseq) < len(wtAAseq):
+                                                mutAAseq += 'del'
+                                                mutntseq += 'del'
+                                            elif len(mutAAseq) > len(wtAAseq):
+                                                mutAAseq += 'insert'
+                                                mutntseq += 'insert'
                                             for curPM in entry:
                                                 if startcodonpos == endcodonpos:
-                                                    mutorfs[orf][curPM[0]] = f"({orf}:{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}{mutAAseq}))"
+                                                    newmut = f"({orf}:{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}{mutAAseq}))"
                                                 else:
-                                                    mutorfs[orf][curPM[0]] = f"({orf}:{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}-{endcodonpos}{mutAAseq}))"
+                                                    newmut = f"({orf}:{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}-{endcodonpos}{mutAAseq}))"
+                                                mutorfs[orf][curPM[0]] = newmut
+                                                try:
+                                                    nt_to_AA_dict[orf][nt_to_AA_key][curPM[0]] = newmut
+                                                except:
+                                                    nt_to_AA_dict[orf][nt_to_AA_key]= {curPM[0] : newmut}
 
-                                        else:
-                                            curPM = entry[0][0]
-                                            if 'Del' in  curPM or 'insert' in curPM:
-                                                for sub_entry in curPM.split('|'):
-                                                    if ('('+orf+':') in sub_entry:
-                                                        mutorfs[orf][curPM] = sub_entry
-                                            else:
-                                                ORFPos = entry[0][1]
-                                                AAinfo = singletCodon(ORFPos, curPM[-1], (ref[3][orf]['nts']))
-                                                PM = '(' + orf + ":" + curPM[0] + str(ORFPos) + curPM[-1] + "(" + ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+'))'
-                                                mutorfs[orf][curPM] = PM
-                            MNPchecked = []
-                            for mut in mutations:
-                                if 'Del' or 'insert' in mut:
-                                    checkedmut = mut.split('|')[0]
-                                else:
-                                    checkedmut = mut
-                                for orf in mutorfs:
-                                    try:
-                                        checkedmut += '|'+mutorfs[orf][mut]
-                                    except:
-                                        pass
-                                MNPchecked.append(checkedmut)
-                            mutations = MNPchecked
-
-                        if args.AAcentered == 1 and args.AAreport == 1:
-                            
-                            aa_seq = []
-                            for mut in mutations:
-                                if '|' in mut:
-                                    split_mut = mut.split('|')
-                                    for orfmut in split_mut[1:]:
-                                        try:
-                                            new_entry = orfmut[1:-1].split(':')[0]+':'+orfmut[1:-1].split('(')[1][:-1]+'('+split_mut[0]+')'
-                                        except:
-                                            new_entry = orfmut[1:-1]
-                                        if not new_entry in aa_seq:
-                                            aa_seq.append(new_entry)
-                                        if '-' in split_mut[0]:
-                                            try:
-                                                aa_genome_pos_dict[new_entry].append(split_mut[0].split('-')[0].strip('ATCGN'))
-                                            except:
-                                                aa_genome_pos_dict[new_entry] = [split_mut[0].split('-')[0].strip('ATCGN')]
-                                            if not 'insert' in split_mut[0]:
-                                                aa_genome_pos_dict[new_entry].append(split_mut[0].split('-')[1].strip('ATCGNDel'))
-                                        else:
-                                            try:
-                                                aa_genome_pos_dict[new_entry].append(split_mut[0].strip('ATCGN'))
-                                            except:
-                                                aa_genome_pos_dict[new_entry] = [split_mut[0].strip('ATCGN')]
-                                else:
-                                    aa_seq.append('Non-Coding:'+mut)
-                                    
-                                    if '-' in mut:
-                                        try:
-                                            aa_genome_pos_dict['Non-Coding:'+mut].append(mut.split('-')[0].strip('ATCGN'))
-                                        except:
-                                            aa_genome_pos_dict['Non-Coding:'+mut] = [mut.split('-')[0].strip('ATCGN')]
-                                        if not 'insert' in mut:
-                                            aa_genome_pos_dict['Non-Coding:'+mut].append(mut.split('-')[1].strip('ATCGNDel'))
                                     else:
-                                        try:
-                                            aa_genome_pos_dict['Non-Coding:'+mut].append(mut.strip('ATCGN'))
-                                        except:
-                                            aa_genome_pos_dict['Non-Coding:'+mut] = [mut.strip('ATCGN')]
-                            
-                            aa_seq = " ".join(aa_seq)
-                            
-                            if args.wgs == 0:
+                                        curPM = entry[0][0]
+                                        if curPM in nt_to_AA_dict[orf]:
+                                            newmut = nt_to_AA_dict[orf][curPM]
+                                        else:
+                                            mutstring = gb_SNP_call(curPM, ref)
+                                            newmut = []
+                                            for submut in mutstring.split('|')[1:]:
+                                                if orf in submut:
+                                                    newmut.append(submut)
+                                            newmut = '|'.join(newmut)
+                                            nt_to_AA_dict[orf][curPM] = newmut
+                                        mutorfs[orf][curPM] = newmut
+                        MNPchecked = []
+                        for mut in SNP_sequence.split(' '):
+                            checkedmut = mut
+                            for orf in mutorfs:
                                 try:
-                                    aa_seq_species[aa_seq] += reads_count
+                                    checkedmut += '|'+mutorfs[orf][mut]
                                 except:
-                                    aa_seq_species[aa_seq] = reads_count
-                                # if args.read == 1:
-                                    # reads_fh.write(f"{readID}\t{aa_seq}\n")
-                            else:
-                                try:
-                                    aa_seq_species[str(Pos)+' '+aa_seq+' '+str(Pos+q_pars_pos)] += reads_count
-                                except:
-                                    aa_seq_species[str(Pos)+' '+aa_seq+' '+str(Pos+q_pars_pos)] = reads_count
-                                # if args.read == 1:
-                                    # reads_fh.write(f"{readID}\t{str(Pos)} {aa_seq} {str(Pos+q_pars_pos)}\n")
-                            
-                        mutations = " ".join(mutations)
-
-                        if args.wgs == 0:
+                                    pass
+                            MNPchecked.append(checkedmut)
+                            if args.indel == 1:
+                                if 'del' in checkedmut or 'insert' in checkedmut:
+                                    try:
+                                        indel_dict[checkedmut] += sum(col_reads[SNP_sequence].values())
+                                    except:
+                                        indel_dict[checkedmut] = sum(col_reads[SNP_sequence].values())
+                        mutations = " ".join(MNPchecked)
+                        col_reads[SNP_sequence]['AA_sequence'] = mutations
+                else:
+                    try:
+                        col_reads[SNP_sequence]['AA_sequence']
+                    except:
+                        mutations =[]
+                        for mut in SNP_sequence.split(' '):
+                            if mut.isnumeric():
+                                newmut = mut
                             try:
-                                seq_species[mutations] += reads_count
+                                newmut = nt_to_AA_dict[mut]
                             except:
-                                seq_species[mutations] = reads_count
-                            if args.read == 1:
-                                reads_fh.write(f"{readID}\t{mutations}\n")
+                                mutstring = gb_SNP_call(mut, ref)
+                                nt_to_AA_dict[mut] = mutstring
+                                newmut = mutstring
+                            mutations.append(newmut)
+                            if args.indel == 1:
+                                if 'del' in mut or 'insert' in mut:
+                                    try:
+                                        indel_dict[newmut] += sum(col_reads[SNP_sequence].values())
+                                    except:
+                                        indel_dict[newmut] = sum(col_reads[SNP_sequence].values())
+                        col_reads[SNP_sequence]['AA_sequence'] = " ".join(mutations)
+
+        elif args.indel == 1:
+            for SNP_sequence in col_reads:
+                if 'del' in SNP_sequence or 'insert' in SNP_sequence:
+                    for mut in SNP_sequence.split(' '):
+                        if 'del' in mut or 'ins' in mut:
+                            try:
+                                indel_dict[mut] += sum(col_reads[SNP_sequence].values())
+                            except:
+                                indel_dict[mut] = sum(col_reads[SNP_sequence].values())
+
+        if args.AAcentered == 1 and args.AAreport == 1:
+            for SNP_sequence in col_reads:
+                aa_seq = {}
+                try:
+                    col_reads[SNP_sequence]['AA_sequence']
+                except:
+                    pass
+                else:
+                    for mut in col_reads[SNP_sequence]['AA_sequence'].split(' '):
+                        if mut.isnumeric():
+                            aa_seq[mut] = [int(mut)]
+                        elif '|' in mut:
+                            split_mut = mut.split('|')
+
+                            for orfmut in split_mut[1:]:
+                                orfmut_split = orfmut[1:-1].split(':')
+                                orf = orfmut_split[0]
+                                split_orfmut_split = orfmut_split[1].split('(')
+                                try:
+                                    AAchange = split_orfmut_split[1][:-1]
+                                    orfnts = split_orfmut_split[0]
+                                except:
+                                    AAchange = split_orfmut_split[0]
+                                    orfnts = ''
+
+                                entry = f"{orf}:{AAchange}({orfnts})"
+
+                                startPos = int(split_mut[0].split('-')[0].strip('ATCGN'))
+                                endPos = startPos
+                                if 'del' in split_mut[0]:
+                                    endPos = int(split_mut[0].split('-')[1].strip('del'))
+
+                                try:
+                                    aa_seq[entry]
+                                except:
+                                    aa_seq[entry] = [startPos, endPos]
+                                else:
+                                    aa_seq[entry].append(startPos)
+                                    aa_seq[entry].append(endPos)
+
                         else:
-                            try:
-                                seq_species[str(Pos)+' '+mutations+' '+str(Pos+q_pars_pos)] += reads_count
-                            except:
-                                seq_species[str(Pos)+' '+mutations+' '+str(Pos+q_pars_pos)] = reads_count
-                            if args.read == 1:
-                                reads_fh.write(f"{readID}\t{str(Pos)} {mutations} {str(Pos+q_pars_pos)}\n")
+                            startPos = int(mut.split('-')[0].strip('ATCGN'))
+                            endPos = startPos
+                            if 'del' in mut:
+                                endPos = int(mut.split('-')[1].strip('del'))
+                            aa_seq['Non-Coding:'+mut] = [startPos, endPos]
 
-                    for i in range(Pos, Pos+q_pars_pos+1): # update coverage
-                        try:
-                            coverage[i] += reads_count
-                        except:
-                            coverage[i] = reads_count
-    if args.read == 1:
-        reads_fh.close()
-    sam_fh.close()
-    # END SAM LINES
-    print(f"End SAM parse for {samp}")
 
-    if sam_read_count == 0:
-        print(f"No Reads for {samp}")
+                    aa_sequence = []
+                    for entry in aa_seq:
+                        aa_sequence.append(entry)
+                        aa_genome_pos_dict[entry] = [min(aa_seq[entry]), max(aa_seq[entry])]
+                    aa_sequence = " ".join(aa_sequence)
 
-    else:
+                    col_reads[SNP_sequence]['AA_centered'] = aa_sequence
+
+        if args.read == 1:
+            reads_fh = open(samp+'_reads.tsv', "w")
+            for line in reads_list:
+                if args.AAreport == 1:
+                    try:
+                        reads_fh.write(f"{line[0]}\t{line[2]} {col_reads[line[1]]['AA_sequence']} {line[3]}\n")
+                    except:
+                        reads_fh.write(f"{line[0]}\t{line[2]} {line[1]} {line[3]}\n")
+                else:
+                    reads_fh.write(f"{line[0]}\t{line[2]} {line[1]} {line[3]}\n")
+            reads_fh.close()
+
         if args.seq == 1: # output the sequence
-            printUniqueSeq(samp, sam_read_count, seq_species, coverage, args)
-            if args.AAcentered == 1 and args.AAreport == 1:
-                printUniqueSeq(samp+'_AA', sam_read_count, aa_seq_species, coverage, args)
+            printUniqueSeq(samp, sam_read_count, col_reads, coverage, args)
             # print(f"End unqiue seq out for {samp}")
 
         if args.indel == 1 and len(indel_dict) > 0: # output indels, if there are any
@@ -1894,7 +1934,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                 ntcallv_fh.write(samp+"("+str(sam_read_count)+")\n")
             sorted_Pos = sorted(nt_call_dict_dict)
             if args.AAreport == 1:
-            
+
                 ntcall_fh.write("Position\tref NT\tAAs\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
                 if args.ntvar == 1:
                     ntcallv_fh.write("Position\tref NT\tAAs\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
@@ -1939,16 +1979,15 @@ def gbSAMparse(args, ref, file): # process SAM files
                             i = 1
                             for insertion in ins_nt_dict[Pos]:
                                 iPos = Pos+(i/1000)
-                                split_ins = insertion.split('|')
-                                i_nts = split_ins[0].split('insert')[1]
+                                i_nts = insertion.split('insert')[1]
                                 try:
-                                    i_AAs = split_ins[1]
+                                    i_AAs = '|'.join(gb_SNP_call(insertion, ref).split('|')[1:])
                                 except:
                                     i_AAs = ''
                                 AA_pos = ", ".join(orfAAreports)
                                 iabund = ins_nt_dict[Pos][insertion]/total
                                 ntcall_lines['line'][iPos] = f"{Pos}\t-\t{AA_pos}\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
-                                ntcall_lines['line'][iPos] += f"\t{iabund:.3f}\t{i_AAs}"
+                                ntcall_lines['line'][iPos] += f"\t{iabund:.3f}\t\t{i_AAs}"
                                 ntcall_lines['line'][iPos] += "\n"
                                 i += 1
 
@@ -2127,7 +2166,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 ntcall_lines['line'][iPos] += f"\t{iabund:.3f}"
                                 ntcall_lines['line'][iPos] += "\n"
                                 i += 1
-                                
+
                         Pos_calls = {}
                         for key in nt_call_dict_dict[Pos]:
                             Pos_calls[key] = nt_call_dict_dict[Pos][key]
@@ -2158,10 +2197,9 @@ def gbSAMparse(args, ref, file): # process SAM files
             # END NT CALL OUT
             # print(f"End nt call out for {samp}")
         if args.covar == 1: # output covariants
-            printCovars(samp, sam_read_count, seq_species, coverage, args, {})
-            if args.AAcentered == 1 and args.AAreport == 1:
-                printCovars(samp+'_AA', sam_read_count, aa_seq_species, coverage, args, aa_genome_pos_dict)
+            printCovars(samp, sam_read_count, col_reads, coverage, args, aa_genome_pos_dict)
             # print(f"End covar out for {samp}")
+
     print(f'End {file} main output')
 
 def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
@@ -2212,16 +2250,12 @@ def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
     lensortedpassed = sorted(passedseqs, key = lambda key : len(key.split(' ')), reverse=True)
     ratiolensortedpassed = sorted(lensortedpassed, key = lambda key : passedseqs[key], reverse = True)
     sortedsingles = sorted(covardict['singles'], key = covardict['singles'].__getitem__)
-    # print(lensortedpassed)
-    # print(ratiolensortedpassed)
     deconved = {}
     for seq in ratiolensortedpassed: # reassign counts
-        # print(seq)
         singles = seq.split(' ')
         first = 0
         rem_count = 0
         for sing in sortedsingles:
-            # print(sing+' '+str(covardict['singles'][sing]))
             if sing in singles:
                 if covardict['singles'][sing] > 0:
                     if first == 0:
@@ -2238,12 +2272,10 @@ def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
     sortedpreserved = sorted(preservedseqs, key = lambda key : covardict[key])
 
     for seq in sortedpreserved:
-        # print(seq)
         singles = seq.split(' ')
         first = 0
         rem_count = 0
         for sing in sortedsingles:
-            # print(sing+' '+str(covardict['singles'][sing]))
             if sing in singles:
                 if covardict['singles'][sing] > 0:
                     if first == 0:
@@ -2369,7 +2401,6 @@ def chimrm(args, samp, seqs): # chimera removed process
         dechim(args, seqs)
         post_len = len(seqs)
         inf_loop_shield += 1
-        # print(f"{inf_loop_shield} {pre_len} {post_len}")
         if post_len >= pre_len:
             break
         if inf_loop_shield > args.max_cycles:
@@ -2473,7 +2504,6 @@ def main():
             print('Reference not recognized as a Fasta or Genebank format, skipping SAM parsing')
         else:
 
-            # print(ref[3])
             # collect SAM files to process, either from the command line or the working directory
             SAMs = []
             try:
