@@ -960,7 +960,7 @@ def printUniqueSeq(samp, sam_read_count, col_reads, coverage, args):
                         seq_species[SNP_sequence] += col_reads[SNP_sequence][start_end]
                     except:
                         seq_species[SNP_sequence] = col_reads[SNP_sequence][start_end]
-            
+
 
     sorted_seq = sorted(seq_species, key=seq_species.__getitem__, reverse=True)
     for key in sorted_seq:
@@ -1130,7 +1130,7 @@ def printCovars(samp, sam_read_count, col_reads, coverage, args, aa_centered):
                                 endcovPos = aa_centered[splitcombos[-1]][-1]
                             if startcovPos == endcovPos:
                                 abund = combinations[key] / coverage[int(startcovPos)]
-                                    
+
                             elif args.covar_tile_coverage == 0:
                                 coveragevals = []
                                 for i in range(int(startcovPos), int(endcovPos)+1):
@@ -1618,15 +1618,6 @@ def gbSAMparse(args, ref, file): # process SAM files
 
                             fshift = 0
                             for mut in SNP_sequence.split(' '):
-                                # if mut.isnumeric():
-                                    # continue
-                                # if (orf+':fs/') in mut or (orf+':Star') in mut:
-                                    # if curMNP:
-                                        # MNPs.append(curMNP)
-                                    # MNPs.append([[mut, -1]])
-                                    # curMNP = ''
-                                    # last_codon = -1
-                                    # continue
                                 startPos = int(mut.split('-')[0].strip('ATCGN'))
                                 endPos = startPos
                                 if 'del' in mut:
@@ -2202,10 +2193,11 @@ def gbSAMparse(args, ref, file): # process SAM files
 
     print(f'End {file} main output')
 
-def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
+def cvdeconv(args, samp, covardict, sequence_dict): # covar deconvolution process
 
     passedseqs = {}
     preservedseqs = {}
+    seqdict = sequence_dict
     for seq in seqdict: # pass check for actual : expected abundance
         if seq != 'total' and seq != 'singles':
 
@@ -2237,7 +2229,7 @@ def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
 
     if args.pass_out == 1: # write passed covars to file if enabled
         fh_pass = open(samp+"_covar_pass.tsv", "w")
-        fh_pass.write(f"{samp}({covardict['total']})\tCount\tAbundance\tPass Ratio\n")
+        fh_pass.write(f"{samp}({covardict['total']})\nSequences\tCount\tAbundance\tPass Ratio\n")
         for seq in preservedseqs:
             if covardict[seq] >= min_count:
                 fh_pass.write(f"{seq}\t{covardict[seq]}\t{(covardict[seq]/covardict['total']):.3f}\t{preservedseqs[seq]}*\n")
@@ -2292,7 +2284,7 @@ def cvdeconv(args, samp, covardict, seqdict): # covar deconvolution process
 
     newtotal = sum(deconved.values())
     fh_deconv = open(samp+"_covar_deconv.tsv", "w")
-    fh_deconv.write(f"{samp}({covardict['total']}) | ({newtotal})\tCount\tAbundance\n")
+    fh_deconv.write(f"{samp}({covardict['total']}) | ({newtotal})\nSequences\tCount\tAbundance\n")
     sorted_deconved = sorted(deconved, key = deconved.__getitem__, reverse = True)
     for seq in sorted_deconved: # write deconv
         if deconved[seq] >= min_count:
@@ -2491,6 +2483,96 @@ def chimproc(args, samp):
             except:
                 print(f"Failed to Process {samp}_unique_seqs.tsv")
 
+def collect_lines(dict_dict, all_dict, file, args):
+
+    sample_line = ''
+    try:
+        samp=open(file, "r")
+    except:
+        print("can't open "+file)
+    else:
+        for line in samp:
+            splitline = line.strip("\n\r").split("\t")
+            try:
+                splitline[1]
+            except:
+                sample_line = splitline[0]
+                dict_dict[sample_line] = {}
+
+            else:
+                if not splitline[1] == 'Count':
+                    if float(splitline[2]) >= args.min_col_abund:
+                        dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
+                        all_dict[splitline[0]] = 1
+        samp.close()
+        return(dict_dict, all_dict)
+
+def collection(args):
+
+    covar_dict_dict = {}
+    seq_dict_dict = {}
+    deconv_dict_dict = {}
+    pass_dict_dict = {}
+    cr_dict_dict = {}
+
+    all_covar = {}
+    all_seq = {}
+    all_deconv = {}
+    all_pass = {}
+    all_cr = {}
+
+    for file in os.listdir(os.getcwd()):
+        if file.endswith('_covars.tsv'):
+            covar_dict_dict, all_covar = collect_lines(covar_dict_dict, all_covar, file, args)
+
+        if file.endswith('_seqs.tsv'):
+            seq_dict_dict, all_seq = collect_lines(seq_dict_dict, all_seq, file, args)
+
+        if file.endswith('_deconv.tsv'):
+            deconv_dict_dict, all_deconv = collect_lines(deconv_dict_dict, all_deconv, file, args)
+
+        if file.endswith('_pass.tsv'):
+            pass_dict_dict, all_pass = collect_lines(pass_dict_dict, all_pass, file, args)
+
+        if file.endswith('_chim_rm.tsv'):
+            cr_dict_dict, all_cr = collect_lines(cr_dict_dict, all_cr, file, args)
+
+    dict_collection = (
+    ("Covariances", covar_dict_dict, all_covar),
+    ("Unique_Seqs", seq_dict_dict, all_seq),
+    ("Covar_Deconv", deconv_dict_dict, all_deconv),
+    ("Covar_Pass", pass_dict_dict, all_pass),
+    ("Chimeras_Removed", cr_dict_dict, all_cr)
+    )
+
+    for dicts in dict_collection:
+        if dicts[1]:
+            if args.colID == '':
+                collection_fh = open(f"Collected_{dicts[0]}.tsv","w")
+            else:
+                collection_fh = open(args.colID+f"_Collected_{dicts[0]}.tsv","w")
+            sorted_seqs = sorted(dicts[2])
+            collection_fh.write("\t")
+            for sampline in dicts[1]:
+                collection_fh.write(sampline+"\t\t")
+            collection_fh.write("\nSequnces\t")
+            for sampline in dicts[1]:
+                collection_fh.write("Count\tAbundance\t")
+            collection_fh.write("\n")
+            for seq in sorted_seqs:
+                collection_fh.write(seq+"\t")
+                for sample in dicts[1]:
+                    try:
+                        collection_fh.write(dicts[1][sample][seq][0]+"\t"+dicts[1][sample][seq][1]+"\t")
+                    except:
+                        collection_fh.write("\t\t")
+
+                collection_fh.write("\n")
+            collection_fh.close()
+        else:
+            print(f"No {dicts[0]} files found")
+
+
 def main():
 
     args = arg_parser() # getting command line arguments
@@ -2543,263 +2625,7 @@ def main():
 
 # begin collection of sample outputs
     if args.collect == 1:
-        covar_dict_dict = {}
-        seq_dict_dict = {}
-        deconv_dict_dict = {}
-        pass_dict_dict = {}
-        cr_dict_dict = {}
-
-        all_covars = {}
-        all_seqs = {}
-        all_deconv = {}
-        all_pass = {}
-        all_cr = {}
-
-        sample_line = ''
-
-        for file in os.listdir(os.getcwd()):
-            if file.endswith('_covars.tsv'):
-                try:
-                    samp=open(file, "r")
-                except:
-                    print("can't open "+file)
-                else:
-                    for line in samp:
-                        splitline = line.strip("\n\r").split("\t")
-                        try:
-                            splitline[1]
-                        except:
-                            sample_line = splitline[0]
-                            covar_dict_dict[sample_line] = {}
-
-                        else:
-                            if not splitline[1] == 'Count':
-                                if float(splitline[2]) >= args.min_col_abund:
-                                    covar_dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
-                                    all_covars[splitline[0]] = 1
-                    samp.close()
-
-
-            if file.endswith('_seqs.tsv'):
-                try:
-                    samp=open(file, "r")
-                except:
-                    print("can't open "+file)
-                else:
-                    for line in samp:
-                        splitline = line.strip("\n\r").split("\t")
-                        try:
-                            splitline[1]
-                        except:
-                            sample_line = splitline[0]
-                            seq_dict_dict[sample_line] = {}
-
-                        else:
-                            if not splitline[1] == 'Count':
-                                if float(splitline[2]) >= args.min_col_abund:
-                                    seq_dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
-                                    all_seqs[splitline[0]] = 1
-                    samp.close()
-
-            if file.endswith('_deconv.tsv'):
-                try:
-                    samp=open(file, "r")
-                except:
-                    print("can't open "+file)
-                else:
-                    for line in samp:
-                        splitline = line.strip("\n\r").split("\t")
-                        try:
-                            splitline[1]
-                        except:
-                            sample_line = splitline[0]
-                            deconv_dict_dict[sample_line] = {}
-
-                        else:
-                            if splitline[1] == 'Count':
-                                sample_line = splitline[0]
-                                deconv_dict_dict[sample_line] = {}
-                            else:
-                                if float(splitline[2]) >= args.min_col_abund:
-                                    deconv_dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
-                                    all_deconv[splitline[0]] = 1
-                    samp.close()
-
-            if file.endswith('_pass.tsv'):
-                try:
-                    samp=open(file, "r")
-                except:
-                    print("can't open "+file)
-                else:
-                    for line in samp:
-                        splitline = line.strip("\n\r").split("\t")
-                        try:
-                            splitline[1]
-                        except:
-                            sample_line = splitline[0]
-                            pass_dict_dict[sample_line] = {}
-
-                        else:
-                            if splitline[1] == 'Count':
-                                sample_line = splitline[0]
-                                pass_dict_dict[sample_line] = {}
-                            else:
-                                if float(splitline[2]) >= args.min_col_abund:
-                                    pass_dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
-                                    all_pass[splitline[0]] = 1
-                    samp.close()
-
-            if file.endswith('_chim_rm.tsv'):
-                try:
-                    samp=open(file, "r")
-                except:
-                    print("can't open "+file)
-                else:
-                    for line in samp:
-                        splitline = line.strip("\n\r").split("\t")
-                        try:
-                            splitline[1]
-                        except:
-                            sample_line = splitline[0]
-                            cr_dict_dict[sample_line] = {}
-
-                        else:
-                            if not splitline[1] == 'Count':
-                                if float(splitline[2]) >= args.min_col_abund:
-                                    cr_dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
-                                    all_cr[splitline[0]] = 1
-                    samp.close()
-
-        if len(covar_dict_dict) > 0:
-            if args.colID == '':
-                Abund_Poly_fh = open('Collected_Covariances.tsv',"w")
-            else:
-                Abund_Poly_fh = open(args.colID+'_Collected_Covariances.tsv',"w")
-            sorted_covars = sorted(all_covars)
-            Abund_Poly_fh.write("\t")
-            for sampline in covar_dict_dict:
-                Abund_Poly_fh.write(sampline+"\t\t")
-            Abund_Poly_fh.write("\nVariants\t")
-            for sampline in covar_dict_dict:
-                Abund_Poly_fh.write("Count\tAbundance\t")
-            Abund_Poly_fh.write("\n")
-            for covar in sorted_covars:
-                Abund_Poly_fh.write(covar+"\t")
-                for sample in covar_dict_dict:
-                    try:
-                        Abund_Poly_fh.write(covar_dict_dict[sample][covar][0]+"\t"+covar_dict_dict[sample][covar][1]+"\t")
-                    except:
-                        Abund_Poly_fh.write("\t\t")
-
-                Abund_Poly_fh.write("\n")
-            Abund_Poly_fh.close()
-        else:
-            print('No covar files found')
-
-        if len(seq_dict_dict) > 0:
-            if args.colID == '':
-                Col_Seq_fh = open('Collected_Unique_Seqs.tsv',"w")
-            else:
-                Col_Seq_fh = open(args.colID+'_Collected_Unique_Seqs.tsv',"w")
-            sorted_seqs = sorted(all_seqs)
-            Col_Seq_fh.write("\t")
-            for sampline in seq_dict_dict:
-                Col_Seq_fh.write(sampline+"\t\t")
-            Col_Seq_fh.write("\nUnique Sequences\t")
-            for sampline in seq_dict_dict:
-                Col_Seq_fh.write("Count\tAbundance\t")
-            Col_Seq_fh.write("\n")
-            for seq in sorted_seqs:
-                Col_Seq_fh.write(seq+"\t")
-                for sample in seq_dict_dict:
-                    try:
-                        Col_Seq_fh.write(seq_dict_dict[sample][seq][0]+"\t"+seq_dict_dict[sample][seq][1]+"\t")
-                    except:
-                        Col_Seq_fh.write("\t\t")
-
-                Col_Seq_fh.write("\n")
-            Col_Seq_fh.close()
-        else:
-            print('No seq files found')
-
-        if len(deconv_dict_dict) > 0:
-            if args.colID == '':
-                Col_deconv_fh = open('Collected_Covar_Deconv.tsv',"w")
-            else:
-                Col_deconv_fh = open(args.colID+'_Collected_Covar_Deconv.tsv',"w")
-            sorted_deconvs = sorted(all_deconv)
-            Col_deconv_fh.write("\t")
-            for sampline in deconv_dict_dict:
-                Col_deconv_fh.write(sampline+"\t\t")
-            Col_deconv_fh.write("\nCovariant\t")
-            for sampline in deconv_dict_dict:
-                Col_deconv_fh.write("Count\tAbundance\t")
-            Col_deconv_fh.write("\n")
-            for deconv in sorted_deconvs:
-                Col_deconv_fh.write(deconv+"\t")
-                for sample in deconv_dict_dict:
-                    try:
-                        Col_deconv_fh.write(deconv_dict_dict[sample][deconv][0]+"\t"+deconv_dict_dict[sample][deconv][1]+"\t")
-                    except:
-                        Col_deconv_fh.write("\t\t")
-
-                Col_deconv_fh.write("\n")
-            Col_deconv_fh.close()
-        else:
-            print('No deconv files found')
-
-        if len(pass_dict_dict) > 0:
-            if args.colID == '':
-                Col_pass_fh = open('Collected_Covar_Pass.tsv',"w")
-            else:
-                Col_pass_fh = open(args.colID+'_Collected_Covar_Pass.tsv',"w")
-            sorted_pass = sorted(all_pass)
-            Col_pass_fh.write("\t")
-            for sampline in pass_dict_dict:
-                Col_pass_fh.write(sampline+"\t\t")
-            Col_pass_fh.write("\nCovariant\t")
-            for sampline in pass_dict_dict:
-                Col_pass_fh.write("Count\tAbundance\t")
-            Col_pass_fh.write("\n")
-            for passed in sorted_pass:
-                Col_pass_fh.write(passed+"\t")
-                for sample in pass_dict_dict:
-                    try:
-                        Col_pass_fh.write(pass_dict_dict[sample][passed][0]+"\t"+pass_dict_dict[sample][passed][1]+"\t")
-                    except:
-                        Col_pass_fh.write("\t\t")
-
-                Col_pass_fh.write("\n")
-            Col_pass_fh.close()
-        else:
-            print('No pass files found')
-
-        if len(cr_dict_dict) > 0:
-            if args.colID == '':
-                Col_cr_fh = open('Collected_Chimeras_Removed.tsv',"w")
-            else:
-                Col_cr_fh = open(args.colID+'_Collected_Chimeras_Removed.tsv',"w")
-            sorted_crs = sorted(all_cr)
-            Col_cr_fh.write("\t")
-            for sampline in cr_dict_dict:
-                Col_cr_fh.write(sampline+"\t\t")
-            Col_cr_fh.write("\nUnique Sequence\t")
-            for sampline in cr_dict_dict:
-                Col_cr_fh.write("Count\tAbundance\t")
-            Col_cr_fh.write("\n")
-            for cr in sorted_crs:
-                Col_cr_fh.write(cr+"\t")
-                for sample in cr_dict_dict:
-                    try:
-                        Col_cr_fh.write(cr_dict_dict[sample][cr][0]+"\t"+cr_dict_dict[sample][cr][1]+"\t")
-                    except:
-                        Col_cr_fh.write("\t\t")
-
-                Col_cr_fh.write("\n")
-            Col_cr_fh.close()
-        else:
-            print('No chim_rm files found')
-
+        collection(args)
 
 if __name__ == '__main__':
     main()
