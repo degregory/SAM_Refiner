@@ -31,7 +31,7 @@ def arg_parser():
     to make sure incompatible values aren't assigned or values aren't out of usable bounds
     Returns stored argument values
     """
-    
+
     parser = argparse.ArgumentParser(
         description='process Sam files for variant information'
     )
@@ -343,7 +343,7 @@ def get_ref(args): # get the reference ID and sequence from the FASTA file.  Wil
     From the reference provide, attempts to obtain reference ID and NT sequence, and AA sequence(s) if AAreport is enabled.
     For fasta formatted files, only the first entry is parsed.
     For genbank formatted files, CDS AA sequences will be pulled along with their gene ID
-    
+
     Returns reference ID, nt sequence, file type and amino acid sequences encoded by the nt seq for fasta files or the CDS reported by genbank files
     """
     n=0
@@ -556,11 +556,11 @@ def singlet_codon_call(nt_pos, nt, ref_nts): # process to return the AA and prot
     Called to determine the amino acid and its position based on a single nt change relative to a referernce sequence
     Parameters:
         nt_pos - position in the reference sequence of the changed nt (1 indexed)
-        nt - the new nucleotide 
+        nt - the new nucleotide
         ref_nts - string of the reference nts (0 indexed) encoding a peptide
     Functionality:
         calculates the position of the AA coded from the codon that the new nt is a part of and the new codon and encoded amino acid
-    Returns the amino acid positin (1 indexed) and the aa_call of the new codon
+    Returns the amino acid position (1 indexed) and the aa_call of the new codon
     """
     aa_pos = (nt_pos-1)//3
     aa_mod = (nt_pos-1)%3
@@ -590,7 +590,7 @@ def sam_line_parser(args, ref, file): # gets read mapping information from SAM a
     based on the cigar string in the line, the sequence is used to collect the nt called at each position, the indels,
     the snp variations, total number of reads mapped and the coverage
     information from each line is collected and returned
-    Returns a dictionary of dictionaries for each position's nt calls, a dictionary of all the insertions, 
+    Returns a dictionary of dictionaries for each position's nt calls, a dictionary of all the insertions,
     a list of each read id and its variant nt sequence, a dictionary of each unique variant nt sequence with total counts as values,
     the total count of reads mapped to the reference, and a dictionary for coverage of each position
     """
@@ -798,8 +798,8 @@ def fasta_snp_call(mut, ref):
     Parameters:
     mut - string of the snp event
     ref - tuple of the information pulled from the reference file
-    Functionality: for indels, determines if the change effects multiple reference codons and how. for 
-    Returns
+    Functionality: for indels, determines if the change effects multiple reference codons and how. for snp, singlet_codon_call function is called to get changes
+    Returns original mutation string appended with amino acid change string
     """
 
     if 'ins' in mut:
@@ -867,12 +867,15 @@ def fasta_snp_call(mut, ref):
         AAstring = '('+ref[3][1][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')'
         return(mut+AAstring)
 
-def gb_snp_call(mut,ref):
+def gb_snp_call(mut, ref):
     """
-    Called to determine the amino acid
+    Called to determine the changed amino encoding from a single mutation event 1 indel or 1 snp based on a gb reference
     Parameters:
-    Functionality:
-    Returns
+    mut - string of the snp event
+    ref - tuple of the information pulled from the reference file
+    Functionality: Determines amino acid changes for each orf effected.  For indels, determines if the change effects multiple reference codons and how.
+    for snp, singlet_codon_call function is called to get changes
+    Returns original mutation string appended with amino acid change string
     """
 
     if 'ins' in mut:
@@ -980,10 +983,14 @@ def gb_snp_call(mut,ref):
 
 def get_combos(qlist, clen): # returns combinations of single polymorphisms in a sequence
     """
-    Called to
+    Called to get combinations of cosegregating polymorphisms
     Parameters:
+    qlist - list of polymorphisms
+    clen - number of polymorphisms to report together
+    
     Functionality:
-    Returns
+        uses itertools.combinations to get sets of combinations for each length
+    Returns list of combinations
     """
     combos = []
     if (clen == 0 or clen > len(qlist)):
@@ -993,12 +1000,43 @@ def get_combos(qlist, clen): # returns combinations of single polymorphisms in a
             combos.append(' '.join(comb))
     return(combos)
 
+def print_reads(samp, reads_list, col_reads, args):
+    """
+    Called to print the reads output
+    Parameters:
+    samp - name of the sam being processed
+    reads_list - list of read lines
+    col_reads - dict of collapsed sequences with amino acid seq if applicable
+    args - arguement values
+    
+    Functionality:
+        opens output file and writes lines
+    Returns nothing
+    """
+    reads_fh = open(samp+'_reads.tsv', "w")
+    for line in reads_list:
+        if args.AAreport == 1:
+            try:
+                reads_fh.write(f"{line[0]}\t{line[2]} {col_reads[line[1]]['AA_sequence']} {line[3]}\n")
+            except:
+                reads_fh.write(f"{line[0]}\t{line[2]} {line[1]} {line[3]}\n")
+        else:
+            reads_fh.write(f"{line[0]}\t{line[2]} {line[1]} {line[3]}\n")
+    reads_fh.close()
+
 def print_unique_seq(samp, sam_read_count, col_reads, coverage, args):
     """
-    Called to
+    Called to print the unique sequences output
     Parameters:
+    samp - name of the sam being processed
+    sam_read_count - number of total reads mapped in the sam file
+    col_reads - dict of collapsed sequences with amino acid seq if applicable
+    coverage - dict of coverage at reference positions
+    args - arguement values
+    
     Functionality:
-    Returns
+        opens output file(s), collects and sorts unique sequences for wgs mode or not, and writes lines
+    Returns nothing
     """
     seq_fh = open(samp+'_unique_seqs.tsv', "w")
     seq_fh.write(samp+"("+str(sam_read_count)+")\n")
@@ -1073,10 +1111,17 @@ def print_unique_seq(samp, sam_read_count, col_reads, coverage, args):
 
 def print_indels(samp, sam_read_count, indel_dict, coverage, args):
     """
-    Called to
+    Called to print the indel output
     Parameters:
+    samp - name of the sam being processed
+    sam_read_count - number of total reads mapped in the sam file
+    indel_reads - dict of indels
+    coverage - dict of coverage at reference positions
+    args - arguement values
+    
     Functionality:
-    Returns
+        sorts indels and gets abundance for wgs mode or not, if any indels pass abundance check, opens file and writes lines
+    Returns nothing
     """
     sorted_indels = sorted(indel_dict, key=indel_dict.__getitem__, reverse=True)
     indels_to_write = []
@@ -1106,10 +1151,19 @@ def print_indels(samp, sam_read_count, indel_dict, coverage, args):
 
 def print_covars(samp, sam_read_count, col_reads, coverage, args, aa_centered):
     """
-    Called to
+    Called to print the covars output
     Parameters:
+    samp - name of the sam being processed
+    sam_read_count - number of total reads mapped in the sam file
+    col_reads - dict of collapsed sequences with amino acid seq if applicable
+    coverage - dict of coverage at reference positions
+    args - arguement values
+    aa_centered- dict of coverage at posistion of polymoprhisms in the aa centered form
+    
     Functionality:
-    Returns
+        parses each unique variant sequence, normal and aa centered, if applicable, to get the cosegregating variations and tiled coverage if enabled, 
+        if there are combos that meet the count threshold output files are opened and lines written
+    Returns nothing
     """
     ntcombinations = {}
     AAcombinations = {}
@@ -1223,12 +1277,36 @@ def print_covars(samp, sam_read_count, col_reads, coverage, args, aa_centered):
 
                 covar_fh.close()
 
+def get_nt_indels(col_reads):
+    """
+    Called to collect indels if amino acid reporting is disabled
+    Parameters:
+    col_reads - dict of unique variant sequences
+    Functionality: goes through unique sequences looking for indels and adds them to a new dict
+    Returns the new indel dict
+    """
+    indel_dict = {}
+    for SNP_sequence in col_reads:
+        if 'del' in SNP_sequence or 'insert' in SNP_sequence:
+            for mut in SNP_sequence.split(' '):
+                if 'del' in mut or 'ins' in mut:
+                    try:
+                        indel_dict[mut] += sum(col_reads[SNP_sequence].values())
+                    except:
+                        indel_dict[mut] = sum(col_reads[SNP_sequence].values())
+    return(indel_dict)
+
 def fa_sam_parse(args, ref, file): # process SAM files
     """
-    Called to
+    Called to handle main sam info parsing logic when using a fasta reference
     Parameters:
+    args - argument values
+    ref - tuple of referecne information
+    file - name of sam file
     Functionality:
-    Returns
+    calls sam_line_parser to get info from sam, then processes the information to get amino acid change information if applicable.
+    prints outputs, mainly by function calls.  nt call output is the exception
+    Returns nothing
     """
 
     samp=file[0: -4]
@@ -1444,34 +1522,19 @@ def fa_sam_parse(args, ref, file): # process SAM files
                         col_reads[SNP_sequence]['AA_sequence'] = " ".join(mutations)
 
         elif args.indel == 1:
-            for SNP_sequence in col_reads:
-                if 'del' in SNP_sequence or 'insert' in SNP_sequence:
-                    for mut in SNP_sequence.split(' '):
-                        if 'del' in mut or 'ins' in mut:
-                            try:
-                                indel_dict[mut] += sum(col_reads[SNP_sequence].values())
-                            except:
-                                indel_dict[mut] = sum(col_reads[SNP_sequence].values())
+            indel_dict = get_nt_indels(col_reads)
 
         if args.read == 1:
-            reads_fh = open(samp+'_reads.tsv', "w")
-            for line in reads_list:
-                reads_fh.write(f"{line[0]}\t{line[2]} {line[1]} {line[3]}\n")
-            reads_fh.close()
+            print_reads(samp, reads_list, col_reads, args)
 
-
-        if args.seq == 1: # output the sequence
+        if args.seq == 1:
             print_unique_seq(samp, sam_read_count, col_reads, coverage, args)
-            # print(f"End unqiue seq out for {samp}")
 
-        if args.indel == 1 and len(indel_dict) > 0: # output indels, if there are any
+        if args.indel == 1 and len(indel_dict) > 0:
             print_indels(samp, sam_read_count, indel_dict, coverage, args)
-            # print(f"End indel out for {samp}")
 
-        if args.covar == 1: # output covariants
+        if args.covar == 1:
             print_covars(samp, sam_read_count, col_reads, coverage, args, {})
-            # print(f"End covar out for {samp}")
-
 
         if args.nt_call == 1: # out put nt calls
             ntcall_lines = {'line' : {},
@@ -1662,12 +1725,17 @@ def fa_sam_parse(args, ref, file): # process SAM files
             # print(f"End nt call out for {samp}")
     print(f'End {file} main output')
 
-def gb_sam_parse(args, ref, file): # process SAM files
+def gb_sam_parse(args, ref, file):
     """
-    Called to
+    Called to handle main sam info parsing logic when using a genbank reference
     Parameters:
+    args - argument values
+    ref - tuple of referecne information
+    file - name of sam file
     Functionality:
-    Returns
+    calls sam_line_parser to get info from sam, then processes the information to get amino acid change information if applicable.
+    prints outputs, mainly by function calls.  nt call output is the exception
+    Returns nothing
     """
 
     samp=file[0: -4]
@@ -1913,14 +1981,7 @@ def gb_sam_parse(args, ref, file): # process SAM files
                         col_reads[SNP_sequence]['AA_sequence'] = " ".join(mutations)
 
         elif args.indel == 1:
-            for SNP_sequence in col_reads:
-                if 'del' in SNP_sequence or 'insert' in SNP_sequence:
-                    for mut in SNP_sequence.split(' '):
-                        if 'del' in mut or 'ins' in mut:
-                            try:
-                                indel_dict[mut] += sum(col_reads[SNP_sequence].values())
-                            except:
-                                indel_dict[mut] = sum(col_reads[SNP_sequence].values())
+            indel_dict = get_nt_indels(col_reads)
 
         if args.AAcentered == 1 and args.AAreport == 1:
             for SNP_sequence in col_reads:
@@ -1979,24 +2040,16 @@ def gb_sam_parse(args, ref, file): # process SAM files
                     col_reads[SNP_sequence]['AA_centered'] = aa_sequence
 
         if args.read == 1:
-            reads_fh = open(samp+'_reads.tsv', "w")
-            for line in reads_list:
-                if args.AAreport == 1:
-                    try:
-                        reads_fh.write(f"{line[0]}\t{line[2]} {col_reads[line[1]]['AA_sequence']} {line[3]}\n")
-                    except:
-                        reads_fh.write(f"{line[0]}\t{line[2]} {line[1]} {line[3]}\n")
-                else:
-                    reads_fh.write(f"{line[0]}\t{line[2]} {line[1]} {line[3]}\n")
-            reads_fh.close()
+            print_reads(samp, reads_list, col_reads, args)
 
-        if args.seq == 1: # output the sequence
+        if args.seq == 1:
             print_unique_seq(samp, sam_read_count, col_reads, coverage, args)
-            # print(f"End unqiue seq out for {samp}")
 
-        if args.indel == 1 and len(indel_dict) > 0: # output indels, if there are any
+        if args.indel == 1 and len(indel_dict) > 0:
             print_indels(samp, sam_read_count, indel_dict, coverage, args)
-            # print(f"End indel out for {samp}")
+
+        if args.covar == 1:
+            print_covars(samp, sam_read_count, col_reads, coverage, args, aa_genome_pos_dict)
 
         if args.nt_call == 1: # out put nt calls
             ntcall_lines = {'line' : {},
@@ -2273,18 +2326,22 @@ def gb_sam_parse(args, ref, file): # process SAM files
                 ntcallv_fh.close()
             # END NT CALL OUT
             # print(f"End nt call out for {samp}")
-        if args.covar == 1: # output covariants
-            print_covars(samp, sam_read_count, col_reads, coverage, args, aa_genome_pos_dict)
-            # print(f"End covar out for {samp}")
 
     print(f'End {file} main output')
 
 def covar_deconv(args, samp, covariance_dict, sequence_dict): # covar deconvolution process
     """
-    Called to
+    Called to perform chimera removal based on the covars output and print the covar deconv output
     Parameters:
+    args - argument values
+    samp - sam sample name
+    covariance_dict - dict of covar lines
+    sequence_dict - dict of unique seq lines
+    
     Functionality:
-    Returns
+    The first step determines if a sequence is likely to be a true or chimeric sequence by obtaining the ratio of the frequency of a given covariant sequence relative to an expected abundance of that covariant sequence assuming random recombination of its individual polymorphisms. The expected abundance is obtained by multiplying the abundances of each individual polymorphism that is present in that covariant sequence. For instance, in a sample where ‘1501T(N501Y)’ has an abundance of 0.32 and ‘1709A(A570D)’ has an abundance of 0.35, the expected abundance of the covariant ‘1501T(N501Y) 1709A(A570D)’ would be 0.112 [0.32 × 0.35]. If the ratio of the observed abundance to the expected abundance is equal to or greater than 1 (beta), that covariant passes the check and is sent to the second step. Any sequence that has an abundance of 0.3 or greater is automatically passed. If such a sequence has an observed/expected ratio less than 1, it will be assigned a ratio of 1. The second step processes the passed sequences in order of greatest observed/expected ratio to least. If multiple sequences have the same ratio, they are processed in order of greatest to least distance from the reference. Sequences that automatically pass the first step are processed after the other sequences in order of least abundant to greatest. Sequences are assigned a new occurrence count based on their constituent individual polymorphisms. For the sequence being processed, the count for the least abundant individual polymorphism is assigned to the sequence and constituent polymorphisms making up the sequence have their count reduced by the amount of the least abundant polymorphism. This reduction means the individual polymorphism that had the least counts is assigned 0 counts, so any sequence not yet processed in which that polymorphism is present is functionally removed. This process is repeated until all sequences have been reassessed or removed.
+    
+    Returns nothing
     """
 
     passedseqs = {}
@@ -2488,7 +2545,7 @@ def chim_rm(args, samp, seqs): # chimera removed process
     """
     Called to
     Parameters:
-    Functionality:
+    Functionality:The first algorithm, chimera removed (chim rm), goes through the individual unique sequences, starting with the lowest abundance, to determine if the sequences are chimeric. Figure 3 shows a simplified example of how the determination is made on the lowest abundant sequence of an example unique sequence output (Supplementary 5). For this step, the sequence being considered as a potential chimera is broken up into all possible dimeric halves. Each pair is then compared to all the other sequences to detect potential parents. A sequence is flagged as a potential parent if its abundance is greater than or equal to the abundance of the potential chimera multiplied by 1.8 (foldab) and there is at least one other sequence that would be a matched parent to the complimentary dimeric half. When a pair of dimeric halves have potential parents, the abundances of parent pairs are multiplied. The products from each potential parent pairings are summed as an expected abundance value and compared to the observed abundance of the potential chimera. If the abundance of the potential chimera is less than that of the expected value multiplied by 1.2 (alpha), that sequence is flagged as a chimera and removed. The counts attributed to the flagged chimeric sequence are then redistributed to the parent sequences based on the relative expected contribution to recombination. Once this process has been performed for all the sequences, it is repeated until no more sequences are flagged as chimeric or 100 chimera removal cycles have completed. 
     Returns
     """
 
