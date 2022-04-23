@@ -24,7 +24,14 @@ add --verbose --quiet options
 
 # process for collecing command line arguments
 def arg_parser():
-
+    """
+    Called to get the arguments passed by the command line and process them
+    Functionality:
+    uses argparse module to set up argument values based on the command line then does some conflict checking
+    to make sure incompatible values aren't assigned or values aren't out of usable bounds
+    Returns stored argument values
+    """
+    
     parser = argparse.ArgumentParser(
         description='process Sam files for variant information'
     )
@@ -329,9 +336,15 @@ def arg_parser():
 
 def get_ref(args): # get the reference ID and sequence from the FASTA file.  Will only get the first.
     """
+    Called to get reference data from file provided in the args
+    Parameters:
+    args - argument values
+    Functionality:
     From the reference provide, attempts to obtain reference ID and NT sequence, and AA sequence(s) if AAreport is enabled.
     For fasta formatted files, only the first entry is parsed.
     For genbank formatted files, CDS AA sequences will be pulled along with their gene ID
+    
+    Returns reference ID, nt sequence, file type and amino acid sequences encoded by the nt seq for fasta files or the CDS reported by genbank files
     """
     n=0
     refID = ''
@@ -357,7 +370,7 @@ def get_ref(args): # get the reference ID and sequence from the FASTA file.  Wil
             refprot = ''
             if args.AAreport == 1:
                 for x in range(0, (len(refseq))//3):
-                    AA = AAcall(refseq[x*3]+refseq[x*3+1]+refseq[x*3+2])
+                    AA = aa_call(refseq[x*3]+refseq[x*3+1]+refseq[x*3+2])
                     refprot = refprot + AA
                 if (len(refseq))%3 != 0:
                     refprot = refprot + '?'
@@ -452,7 +465,15 @@ def get_ref(args): # get the reference ID and sequence from the FASTA file.  Wil
 
     return(refID, refseq, reftype, refORFS)
 
-def AAcall(codon): # amino acid / codon dictionary to return encoded AAs
+def aa_call(codon): # amino acid / codon dictionary to return encoded AAs
+    """
+    Called to return an amino acid enoded by the passed codon
+    Parameters:
+    codon - 3 nt sequence
+    Functionality:
+    looks up the codon in the dict and returns its value
+    Returns amino acid or '?' if the codon isn't a valid codon
+    """
     AAdict = {
         'TTT' : 'F',
         'TTC' : 'F',
@@ -530,23 +551,49 @@ def AAcall(codon): # amino acid / codon dictionary to return encoded AAs
 
     return(AA)
 
-def singletCodon(ntPos, nt, ref): # process to return the AA and protein seq. position based on the reference and provided nt seq position and nt
-    AAPos = (ntPos-1)//3
-    AAmod = (ntPos-1)%3
+def singlet_codon_call(nt_pos, nt, ref_nts): # process to return the AA and protein seq. position based on the reference and provided nt seq position and nt
+    """
+    Called to determine the amino acid and its position based on a single nt change relative to a referernce sequence
+    Parameters:
+        nt_pos - position in the reference sequence of the changed nt (1 indexed)
+        nt - the new nucleotide 
+        ref_nts - string of the reference nts (0 indexed) encoding a peptide
+    Functionality:
+        calculates the position of the AA coded from the codon that the new nt is a part of and the new codon and encoded amino acid
+    Returns the amino acid positin (1 indexed) and the aa_call of the new codon
+    """
+    aa_pos = (nt_pos-1)//3
+    aa_mod = (nt_pos-1)%3
     codon = ""
     try:
-        if AAmod == 0:
-            codon = nt+ref[ntPos]+ref[ntPos+1]
-        elif AAmod == 1:
-            codon = ref[ntPos-2]+nt+ref[ntPos]
-        elif AAmod == 2:
-            codon = ref[ntPos-3]+ref[ntPos-2]+nt
+        if aa_mod == 0:
+            codon = nt+ref_nts[nt_pos]+ref_nts[nt_pos+1]
+        elif aa_mod == 1:
+            codon = ref_nts[nt_pos-2]+nt+ref_nts[nt_pos]
+        elif aa_mod == 2:
+            codon = ref_nts[nt_pos-3]+ref_nts[nt_pos-2]+nt
     except:
         codon = "XXX"
 
-    return(AAPos+1, AAcall(codon))
+    return(aa_pos+1, aa_call(codon))
 
-def SAM_line_parser(args, ref, file): # gets read mapping information from SAM and converts it to a PM called line
+def sam_line_parser(args, ref, file): # gets read mapping information from SAM and converts it to a PM called line
+    """
+    Called to pasrse through a sam file line by line and collect information for further processing
+    Parameters:
+    args - argument values
+    ref - tuple of the information pulled from the reference file
+    file - name of the sam file to be processed
+    Functionality:
+    opens the indicated file and runs through each line that isn't a header (starts with '@')
+    and where the sequence mapped is mapped to the reference
+    based on the cigar string in the line, the sequence is used to collect the nt called at each position, the indels,
+    the snp variations, total number of reads mapped and the coverage
+    information from each line is collected and returned
+    Returns a dictionary of dictionaries for each position's nt calls, a dictionary of all the insertions, 
+    a list of each read id and its variant nt sequence, a dictionary of each unique variant nt sequence with total counts as values,
+    the total count of reads mapped to the reference, and a dictionary for coverage of each position
+    """
 
     samp=file[0: -4]
     nt_call_dict_dict = {}
@@ -745,7 +792,15 @@ def SAM_line_parser(args, ref, file): # gets read mapping information from SAM a
 
     return(nt_call_dict_dict, ins_nt_dict, reads_list, col_reads, sam_read_count, coverage)
 
-def fasta_SNP_call(mut, ref):
+def fasta_snp_call(mut, ref):
+    """
+    Called to determine the changed amino encoding from a single mutation event 1 indel or 1 snp based on a fasta reference
+    Parameters:
+    mut - string of the snp event
+    ref - tuple of the information pulled from the reference file
+    Functionality: for indels, determines if the change effects multiple reference codons and how. for 
+    Returns
+    """
 
     if 'ins' in mut:
         istring = ''
@@ -756,26 +811,21 @@ def fasta_SNP_call(mut, ref):
             iProt = ''
             if iPos % 3 == 1:
                 for x in range(0, (run_length//3)):
-                    AA = AAcall(iSeq[x*3]+iSeq[x*3+1]+iSeq[x*3+2])
+                    AA = aa_call(iSeq[x*3]+iSeq[x*3+1]+iSeq[x*3+2])
                     iProt += AA
                 istring += mut+'(' + str(((iPos-1)//3)+1) + iProt + ')'
             elif iPos % 3 == 2:
-                print(mut)
-                print('mod 2')
                 ipSeq = ref[1][iPos-2]+iSeq+ref[1][iPos-1:iPos+1]
                 for x in range(0, (run_length//3)+1):
-                    AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
+                    AA = aa_call(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
                     iProt += AA
                 istring += ref[1][iPos-2:iPos+1]+str(iPos-1)+'-'+str(iPos+1)+ipSeq+'insert(' + ref[3][1][(iPos-1)//3] + str(((iPos-1)//3)+1) + iProt + ')'
             else:
-                print(mut)
-                print('mod 3')
                 ipSeq = ref[1][iPos-3:iPos-1]+iSeq+ref[1][iPos-1]
                 for x in range(0, (run_length//3)+1):
-                    AA = AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
+                    AA = aa_call(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
                     iProt += AA
                 istring += ref[1][iPos-3:iPos]+str(iPos-2)+'-'+str(iPos)+ipSeq+'insert(' + ref[3][1][(iPos-1)//3] + str(((iPos-1)//3)+1) + iProt + ')'
-                print(istring)
         else:
             istring += mut+'('+ str(((iPos-1)//3)+1) +'fs)'
         return(istring)
@@ -795,37 +845,35 @@ def fasta_SNP_call(mut, ref):
         newAArefpos = (delPos-1) // 3
         if (run_length % 3 == 0):
             if (delPos) % 3 == 1:
-                print(mut)
-                print('mod 1')
                 if run_length // 3 == 1:
                     delstring += mut + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)] + str(newAArefpos+1) + 'del)'
                 else:
                     delstring += mut + '(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)] + str(newAArefpos+1) + '-' + str(newAArefpos+run_length//3) + 'del' + ')'
-                print(delstring)
             else:
                 if (delPos) % 3 == 2:
-                    print(mut)
-                    print('mod 2')
                     oldnts = ref[1][delPos-2:delendPos+2]
                     newcodon = ref[1][delPos-2]+ref[1][delendPos:delendPos+2]
                     delstring += oldnts+str(delPos-1)+'-'+str(delendPos+2)+newcodon
                 elif (delPos) % 3 == 0:
-                    print(mut)
-                    print('mod 3')
                     oldnts = ref[1][delPos-3:delendPos+1]
                     newcodon = ref[1][delPos-3:delPos-1]+ref[1][delendPos]
                     delstring += oldnts+str(delPos-2)+'-'+str(delendPos+1)+newcodon
-                delstring += 'del(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)+1] + str(newAArefpos+1) + '-' + str(newAArefpos+1+run_length//3) + AAcall(newcodon) + 'del)'
-                print(delstring)
+                delstring += 'del(' + ref[3][1][newAArefpos:newAArefpos+(run_length//3)+1] + str(newAArefpos+1) + '-' + str(newAArefpos+1+run_length//3) + aa_call(newcodon) + 'del)'
         else:
             delstring += mut + '(' + str(newAArefpos+1) + 'fs)'
         return(delstring)
     else:
-        AAinfo = singletCodon(int(mut[1:-1]), mut[-1], ref[1])
+        AAinfo = singlet_codon_call(int(mut[1:-1]), mut[-1], ref[1])
         AAstring = '('+ref[3][1][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+')'
         return(mut+AAstring)
 
-def gb_SNP_call(mut,ref):
+def gb_snp_call(mut,ref):
+    """
+    Called to determine the amino acid
+    Parameters:
+    Functionality:
+    Returns
+    """
 
     if 'ins' in mut:
         iSeq = mut.split('insert')[1]
@@ -842,18 +890,18 @@ def gb_SNP_call(mut,ref):
                     if (run_length % 3 == 0):
                         if orfPos % 3 == 1:
                             for x in range(0, (run_length//3)):
-                                AA += AAcall(iSeq[x*3]+iSeq[x*3+1]+iSeq[x*3+2])
+                                AA += aa_call(iSeq[x*3]+iSeq[x*3+1]+iSeq[x*3+2])
                             iProt += str(orfPos)+'insert'+iSeq+'(' + str(((orfPos-1)//3)+1) + AA
                         else:
                             if orfPos % 3 == 2:
                                 ipSeq = ref[1][iPos-2]+iSeq+ref[1][iPos-1:iPos+1]
                                 for x in range(0, (run_length//3)+1):
-                                    AA += AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
+                                    AA += aa_call(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
                                 iProt += ref[1][iPos-2:iPos+1]+str(orfPos-1)+'-'+str(orfPos+1)+ipSeq
                             else:
                                 ipSeq = ref[1][iPos-3:iPos-1]+iSeq+ref[1][iPos-1]
                                 for x in range(0, (run_length//3)+1):
-                                    AA += AAcall(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
+                                    AA += aa_call(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
                                 iProt += ref[1][iPos-3:iPos]+str(orfPos-2)+'-'+str(orfPos)+ipSeq
                             iProt += "insert(" + ref[3][orf]["AAs"][(orfPos-1)//3] + str(((orfPos-1)//3)+1) + AA
                     else:
@@ -903,7 +951,7 @@ def gb_SNP_call(mut,ref):
                                 newcodon = ref[1][delPos-3:delPos-1]+ref[1][delendPos]
                                 delProt += oldnts + str(orfPos-2) +'-'+ str(orfendPos+1) + newcodon
                             delProt += 'del(' + ref[3][orf]["AAs"][startcodon-1:endcodon] + str(startcodon) \
-                                    + '-' + str(endcodon) + AAcall(newcodon)+ 'del'
+                                    + '-' + str(endcodon) + aa_call(newcodon)+ 'del'
                     else:
                         delProt += delnts + str(orfPos) +'-'+ str(orfendPos) + 'del(' + str(startcodon) + 'fs'
                     delProt += "))"
@@ -925,12 +973,18 @@ def gb_SNP_call(mut,ref):
             for rf in ref[3][orf]['reading frames']:
                 if PMPos >= rf[0] and PMPos <= rf[1]:
                     ORFPos = PMPos-rf[0]+1+orflength
-                    AAinfo = singletCodon(ORFPos, mut[-1], (ref[3][orf]['nts']))
+                    AAinfo = singlet_codon_call(ORFPos, mut[-1], (ref[3][orf]['nts']))
                     PM += '|(' + orf + ":" + mut[0] + str(ORFPos) + mut[-1] + "(" + ref[3][orf]["AAs"][AAinfo[0]-1]+str(AAinfo[0])+AAinfo[1]+'))'
                 orflength += rf[1] - rf[0] + 1
         return(mut+PM)
 
-def getCombos(qlist, clen): # returns combinations of single polymorphisms in a sequence
+def get_combos(qlist, clen): # returns combinations of single polymorphisms in a sequence
+    """
+    Called to
+    Parameters:
+    Functionality:
+    Returns
+    """
     combos = []
     if (clen == 0 or clen > len(qlist)):
         clen = len(qlist)
@@ -939,7 +993,13 @@ def getCombos(qlist, clen): # returns combinations of single polymorphisms in a 
             combos.append(' '.join(comb))
     return(combos)
 
-def printUniqueSeq(samp, sam_read_count, col_reads, coverage, args):
+def print_unique_seq(samp, sam_read_count, col_reads, coverage, args):
+    """
+    Called to
+    Parameters:
+    Functionality:
+    Returns
+    """
     seq_fh = open(samp+'_unique_seqs.tsv', "w")
     seq_fh.write(samp+"("+str(sam_read_count)+")\n")
     seq_fh.write("Unique Sequence\tCount\tAbundance\n")
@@ -1011,7 +1071,13 @@ def printUniqueSeq(samp, sam_read_count, col_reads, coverage, args):
     if args.AAcentered == 1 and args.AAreport == 1:
         AAseq_fh.close()
 
-def printInDels(samp, sam_read_count, indel_dict, coverage, args):
+def print_indels(samp, sam_read_count, indel_dict, coverage, args):
+    """
+    Called to
+    Parameters:
+    Functionality:
+    Returns
+    """
     sorted_indels = sorted(indel_dict, key=indel_dict.__getitem__, reverse=True)
     indels_to_write = []
     for key in sorted_indels:
@@ -1038,7 +1104,13 @@ def printInDels(samp, sam_read_count, indel_dict, coverage, args):
             indel_fh.write(indel_entry)
         indel_fh.close()
 
-def printCovars(samp, sam_read_count, col_reads, coverage, args, aa_centered):
+def print_covars(samp, sam_read_count, col_reads, coverage, args, aa_centered):
+    """
+    Called to
+    Parameters:
+    Functionality:
+    Returns
+    """
     ntcombinations = {}
     AAcombinations = {}
     tiles = {}
@@ -1074,14 +1146,14 @@ def printCovars(samp, sam_read_count, col_reads, coverage, args, aa_centered):
                         except:
                             tiles[start_pos][end_pos] = col_reads[SNP_sequence][start_end]
         if ntsingles and len(ntsingles) <= args.max_dist:
-            for combo in getCombos(ntsingles, args.max_covar):
+            for combo in get_combos(ntsingles, args.max_covar):
                 if not combo in ntcombinations:
                     ntcombinations[combo] = sequence_count
                 else:
                     ntcombinations[combo] += sequence_count
 
         if AAsingles and len(AAsingles) <= args.max_dist:
-            for combo in getCombos(AAsingles, args.max_covar):
+            for combo in get_combos(AAsingles, args.max_covar):
                 if not combo in AAcombinations:
                     AAcombinations[combo] = sequence_count
                 else:
@@ -1151,11 +1223,17 @@ def printCovars(samp, sam_read_count, col_reads, coverage, args, aa_centered):
 
                 covar_fh.close()
 
-def faSAMparse(args, ref, file): # process SAM files
+def fa_sam_parse(args, ref, file): # process SAM files
+    """
+    Called to
+    Parameters:
+    Functionality:
+    Returns
+    """
 
     samp=file[0: -4]
     print(f"Starting {samp} processing")
-    nt_call_dict_dict, ins_nt_dict, reads_list, col_reads, sam_read_count, coverage = SAM_line_parser(args, ref, file)
+    nt_call_dict_dict, ins_nt_dict, reads_list, col_reads, sam_read_count, coverage = sam_line_parser(args, ref, file)
 
     if sam_read_count == 0:
         print(f"No Reads for {samp}")
@@ -1309,7 +1387,7 @@ def faSAMparse(args, ref, file): # process SAM files
                                         wtAAseq = ref[3][1][startcodonpos-1:endcodonpos]
                                         mutAAseq = ''
                                         for i in range(0, (len(mutntseq)//3)):
-                                            mutAAseq += AAcall(mutntseq[i*3:(i*3)+3])
+                                            mutAAseq += aa_call(mutntseq[i*3:(i*3)+3])
                                         if len(mutntseq) % 3 != 0:
                                             mutAAseq += 'fs'
                                         if len(mutAAseq) < len(wtAAseq):
@@ -1331,7 +1409,7 @@ def faSAMparse(args, ref, file): # process SAM files
                                     elif entry[0][0] in nt_to_AA_dict:
                                         newmut = nt_to_AA_dict[entry[0][0]]
                                     else:
-                                        mutstring = fasta_SNP_call(entry[0][0], ref)
+                                        mutstring = fasta_snp_call(entry[0][0], ref)
                                         nt_to_AA_dict[entry[0][0]] = mutstring
                                         newmut = mutstring
                                 combinedmut.append(newmut)
@@ -1353,7 +1431,7 @@ def faSAMparse(args, ref, file): # process SAM files
                             try:
                                 newmut = nt_to_AA_dict[mut]
                             except:
-                                mutstring = fasta_SNP_call(mut, ref)
+                                mutstring = fasta_snp_call(mut, ref)
                                 nt_to_AA_dict[mut] = mutstring
                                 newmut = mutstring
                             mutations.append(newmut)
@@ -1383,15 +1461,15 @@ def faSAMparse(args, ref, file): # process SAM files
 
 
         if args.seq == 1: # output the sequence
-            printUniqueSeq(samp, sam_read_count, col_reads, coverage, args)
+            print_unique_seq(samp, sam_read_count, col_reads, coverage, args)
             # print(f"End unqiue seq out for {samp}")
 
         if args.indel == 1 and len(indel_dict) > 0: # output indels, if there are any
-            printInDels(samp, sam_read_count, indel_dict, coverage, args)
+            print_indels(samp, sam_read_count, indel_dict, coverage, args)
             # print(f"End indel out for {samp}")
 
         if args.covar == 1: # output covariants
-            printCovars(samp, sam_read_count, col_reads, coverage, args, {})
+            print_covars(samp, sam_read_count, col_reads, coverage, args, {})
             # print(f"End covar out for {samp}")
 
 
@@ -1433,7 +1511,7 @@ def faSAMparse(args, ref, file): # process SAM files
                                 try:
                                     i_AAs = nt_to_AA_dict[insertion].split('(')[1].strip(')')
                                 except:
-                                    i_AAs = fasta_SNP_call(insertion, ref).split('(')[1].strip(')')
+                                    i_AAs = fasta_snp_call(insertion, ref).split('(')[1].strip(')')
                                 AA_pos = ((Pos-1)//3)+1
                                 iabund = ins_nt_dict[Pos][insertion]/total
                                 ntcall_lines['line'][iPos] = f"{Pos}\t-\t{AA_pos}\t-\t\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
@@ -1457,7 +1535,7 @@ def faSAMparse(args, ref, file): # process SAM files
 
                         ntcall_lines['line'][Pos] = (str(Pos)+"\t"+ref[1][Pos-1]+"\t"+str(((Pos-1)//3)+1)+"\t"+ref[3][1][((Pos-1)//3)])
                         ntcall_lines['line'][Pos] +=("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C']))
-                        ntcall_lines['line'][Pos] +=("\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-'])+str(nt_call_dict_dict[Pos]['N']))
+                        ntcall_lines['line'][Pos] +=("\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-'])+"\t"+str(nt_call_dict_dict[Pos]['N']))
                         ntcall_lines['line'][Pos] +=("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]]))
                         ntcall_lines['line'][Pos] +=(f"\t{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}")
 
@@ -1489,17 +1567,17 @@ def faSAMparse(args, ref, file): # process SAM files
                                     codon = consensus[Pos][0]+consensus[Pos+1][0]+ consensus[Pos+2][0]
                                 except:
                                     codon = 'NNN'
-                            ntcall_lines['line'][Pos] +=("\t"+AAcall(codon)+"\t"+singletCodon(Pos, consensus[Pos][0], ref[1])[1])
+                            ntcall_lines['line'][Pos] +=("\t"+aa_call(codon)+"\t"+singlet_codon_call(Pos, consensus[Pos][0], ref[1])[1])
                         else:
                             ntcall_lines['line'][Pos] +=("\t\t")
 
                         if (nt_call_dict_dict[Pos][consensus[Pos][1]] >= args.min_count) and ((nt_call_dict_dict[Pos][consensus[Pos][1]] / total) >= args.min_samp_abund):
                             ntcall_lines['variant'][Pos] = 1
-                            ntcall_lines['line'][Pos] +=(f"\t{consensus[Pos][1]}\t{nt_call_dict_dict[Pos][consensus[Pos][1]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][1]]/total):.3f}"+"\t"+singletCodon(Pos, consensus[Pos][1], ref[1])[1])
+                            ntcall_lines['line'][Pos] +=(f"\t{consensus[Pos][1]}\t{nt_call_dict_dict[Pos][consensus[Pos][1]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][1]]/total):.3f}"+"\t"+singlet_codon_call(Pos, consensus[Pos][1], ref[1])[1])
 
                             if (nt_call_dict_dict[Pos][consensus[Pos][2]] >= args.min_count) and (nt_call_dict_dict[Pos][consensus[Pos][2]] / total >= args.min_samp_abund):
                                 ntcall_lines['variant'][Pos] = 1
-                                ntcall_lines['line'][Pos] +=(f"\t{consensus[Pos][2]}\t{nt_call_dict_dict[Pos][consensus[Pos][2]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][2]]/total):.3f}\t{singletCodon(Pos, consensus[Pos][2], ref[1])[1]}")
+                                ntcall_lines['line'][Pos] +=(f"\t{consensus[Pos][2]}\t{nt_call_dict_dict[Pos][consensus[Pos][2]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][2]]/total):.3f}\t{singlet_codon_call(Pos, consensus[Pos][2], ref[1])[1]}")
 
                 for Pos in ntcall_lines['line']:
                     ntcall_fh.write(ntcall_lines['line'][Pos])
@@ -1516,9 +1594,9 @@ def faSAMparse(args, ref, file): # process SAM files
                         ntcallv_fh.close()
 
             else:
-                ntcall_fh.write("Position\tref NT\tA\tT\tC\tG\t-\t\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
+                ntcall_fh.write("Position\tref NT\tA\tT\tC\tG\t-\tN\t\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
                 if args.ntvar == 1:
-                    ntcallv_fh.write("Position\tref NT\tA\tT\tC\tG\t-\t\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
+                    ntcallv_fh.write("Position\tref NT\tA\tT\tC\tG\t-\tN\t\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
 
                 for Pos in sorted_Pos:
                     try:
@@ -1540,7 +1618,7 @@ def faSAMparse(args, ref, file): # process SAM files
                                 i_nts = insertion.split('insert')[1]
                                 AA_pos = ((Pos-1)//3)+1
                                 iabund = ins_nt_dict[Pos][insertion]/total
-                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
+                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
                                 ntcall_lines['line'][iPos] += f"\t{iabund:.3f}"
 
                                 if ( ins_nt_dict[Pos][insertion] >= args.min_count) and (iabund >= args.min_samp_abund):
@@ -1554,7 +1632,7 @@ def faSAMparse(args, ref, file): # process SAM files
 
                         ntcall_lines['line'][Pos] = str(Pos)+"\t"+ref[1][Pos-1]
                         ntcall_lines['line'][Pos] += "\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])\
-                            +"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']+str(nt_call_dict_dict[Pos]['N']))
+                            +"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-'])+"\t"+str(nt_call_dict_dict[Pos]['N'])
                         ntcall_lines['line'][Pos] += "\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}"
                         if not ref[1][Pos-1] == sorted_calls[0]:
                             ntcall_lines['variant'][Pos] = 1
@@ -1584,11 +1662,17 @@ def faSAMparse(args, ref, file): # process SAM files
             # print(f"End nt call out for {samp}")
     print(f'End {file} main output')
 
-def gbSAMparse(args, ref, file): # process SAM files
+def gb_sam_parse(args, ref, file): # process SAM files
+    """
+    Called to
+    Parameters:
+    Functionality:
+    Returns
+    """
 
     samp=file[0: -4]
     print(f"Starting {samp} processing")
-    nt_call_dict_dict, ins_nt_dict, reads_list, col_reads, sam_read_count, coverage = SAM_line_parser(args, ref, file)
+    nt_call_dict_dict, ins_nt_dict, reads_list, col_reads, sam_read_count, coverage = sam_line_parser(args, ref, file)
 
     if sam_read_count == 0:
         print(f"No Reads for {samp}")
@@ -1755,7 +1839,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                                             wtAAseq = ref[3][orf]['AAs'][startcodonpos-1:endcodonpos]
                                             mutAAseq = ''
                                             for i in range(0, (len(mutntseq)//3)):
-                                                mutAAseq += AAcall(mutntseq[i*3:(i*3)+3])
+                                                mutAAseq += aa_call(mutntseq[i*3:(i*3)+3])
                                             if len(mutntseq) % 3 != 0:
                                                 mutAAseq += 'fs'
                                             if len(mutAAseq) < len(wtAAseq):
@@ -1780,7 +1864,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                                         if curPM in nt_to_AA_dict[orf]:
                                             newmut = nt_to_AA_dict[orf][curPM]
                                         else:
-                                            mutstring = gb_SNP_call(curPM, ref)
+                                            mutstring = gb_snp_call(curPM, ref)
                                             newmut = []
                                             for submut in mutstring.split('|')[1:]:
                                                 if orf in submut:
@@ -1816,7 +1900,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                             try:
                                 newmut = nt_to_AA_dict[mut]
                             except:
-                                mutstring = gb_SNP_call(mut, ref)
+                                mutstring = gb_snp_call(mut, ref)
                                 nt_to_AA_dict[mut] = mutstring
                                 newmut = mutstring
                             mutations.append(newmut)
@@ -1907,11 +1991,11 @@ def gbSAMparse(args, ref, file): # process SAM files
             reads_fh.close()
 
         if args.seq == 1: # output the sequence
-            printUniqueSeq(samp, sam_read_count, col_reads, coverage, args)
+            print_unique_seq(samp, sam_read_count, col_reads, coverage, args)
             # print(f"End unqiue seq out for {samp}")
 
         if args.indel == 1 and len(indel_dict) > 0: # output indels, if there are any
-            printInDels(samp, sam_read_count, indel_dict, coverage, args)
+            print_indels(samp, sam_read_count, indel_dict, coverage, args)
             # print(f"End indel out for {samp}")
 
         if args.nt_call == 1: # out put nt calls
@@ -1926,9 +2010,9 @@ def gbSAMparse(args, ref, file): # process SAM files
             sorted_Pos = sorted(nt_call_dict_dict)
             if args.AAreport == 1:
 
-                ntcall_fh.write("Position\tref NT\tAAs\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
+                ntcall_fh.write("Position\tref NT\tAAs\tA\tT\tC\tG\t-\tN\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
                 if args.ntvar == 1:
-                    ntcallv_fh.write("Position\tref NT\tAAs\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
+                    ntcallv_fh.write("Position\tref NT\tAAs\tA\tT\tC\tG\t-\tN\tTotal\tPrimary NT\tCounts\tAbundance\tPrimary Seq AA\tsingle nt AA\tSecondary NT\tCounts\tAbundance\tAA\tTertiary NT\tCounts\tAbundance\tAA\n")
                 consensus = {}
                 OrfPosDict = {}
                 for orf in ref[3]:
@@ -1972,12 +2056,12 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 iPos = Pos+(i/1000)
                                 i_nts = insertion.split('insert')[1]
                                 try:
-                                    i_AAs = '|'.join(gb_SNP_call(insertion, ref).split('|')[1:])
+                                    i_AAs = '|'.join(gb_snp_call(insertion, ref).split('|')[1:])
                                 except:
                                     i_AAs = ''
                                 AA_pos = ", ".join(orfAAreports)
                                 iabund = ins_nt_dict[Pos][insertion]/total
-                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t{AA_pos}\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
+                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t{AA_pos}\t\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
                                 ntcall_lines['line'][iPos] += f"\t{iabund:.3f}\t\t{i_AAs}"
                                 ntcall_lines['line'][iPos] += "\n"
                                 i += 1
@@ -1990,7 +2074,8 @@ def gbSAMparse(args, ref, file): # process SAM files
                         ntcall_lines['line'][Pos] =(str(Pos)+"\t"+ref[1][Pos-1]+"\t")
                         ntcall_lines['line'][Pos] +=(", ".join(orfAAreports))
 
-                        ntcall_lines['line'][Pos] +=("\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-']))
+                        ntcall_lines['line'][Pos] += "\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])
+                        ntcall_lines['line'][Pos] += "\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-'])+"\t"+str(nt_call_dict_dict[Pos]['N'])
                         ntcall_lines['line'][Pos] +=("\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]]))
                         ntcall_lines['line'][Pos] +=(f"\t{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}")
 
@@ -2067,8 +2152,8 @@ def gbSAMparse(args, ref, file): # process SAM files
                                             codon[1] = ORFmismatch[orf][OrfPos+1]
                                         except:
                                             codon[1] = ref[3][orf]['nts'][OrfPos]
-                                    orfAAreports[0].append(orf+"_"+AAcall("".join(codon)))
-                                    orfAAreports[1].append(orf+"_"+singletCodon(OrfPos, consensus[Pos][0], ref[3][orf]['nts'])[1])
+                                    orfAAreports[0].append(orf+"_"+aa_call("".join(codon)))
+                                    orfAAreports[1].append(orf+"_"+singlet_codon_call(OrfPos, consensus[Pos][0], ref[3][orf]['nts'])[1])
                                 ntcall_lines['line'][Pos] +=("\t"+", ".join(orfAAreports[0])+"\t"+", ".join(orfAAreports[1]))
                                 if (nt_call_dict_dict[Pos][consensus[Pos][1]] > args.min_count) and (nt_call_dict_dict[Pos][consensus[Pos][1]] /total > args.min_samp_abund):
                                         ntcall_lines['line'][Pos] +=(f"\t{consensus[Pos][1]}\t{nt_call_dict_dict[Pos][consensus[Pos][1]]}\t{(nt_call_dict_dict[Pos][consensus[Pos][1]]/total):.3f}")
@@ -2076,7 +2161,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                                         for ORFentry in OrfPosDict[Pos]:
                                             OrfPos = ORFentry[1]
                                             orf = ORFentry[0]
-                                            orfAAreports.append(orf+"_"+singletCodon(OrfPos, consensus[Pos][1], ref[3][orf]['nts'])[1])
+                                            orfAAreports.append(orf+"_"+singlet_codon_call(OrfPos, consensus[Pos][1], ref[3][orf]['nts'])[1])
                                         ntcall_lines['line'][Pos] += ("\t"+", ".join(orfAAreports))
                                         if nt_call_dict_dict[Pos][consensus[Pos][2]] > args.min_count:
                                             if nt_call_dict_dict[Pos][consensus[Pos][2]] /total  > args.min_samp_abund:
@@ -2085,7 +2170,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                                                 for ORFentry in OrfPosDict[Pos]:
                                                     OrfPos = ORFentry[1]
                                                     orf = ORFentry[0]
-                                                    orfAAreports.append(orf+"_"+singletCodon(OrfPos, consensus[Pos][2], ref[3][orf]['nts'])[1])
+                                                    orfAAreports.append(orf+"_"+singlet_codon_call(OrfPos, consensus[Pos][2], ref[3][orf]['nts'])[1])
                                                 ntcall_lines['line'][Pos] += ("\t"+", ".join(orfAAreports))
 
 
@@ -2105,7 +2190,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 for ORFentry in OrfPosDict[Pos]:
                                     OrfPos = ORFentry[1]
                                     orf = ORFentry[0]
-                                    orfAAreports.append(orf+"_"+singletCodon(OrfPos, consensus[Pos][1], ref[3][orf]['nts'])[1])
+                                    orfAAreports.append(orf+"_"+singlet_codon_call(OrfPos, consensus[Pos][1], ref[3][orf]['nts'])[1])
                                 ntcall_lines['line'][Pos] += ("\t"+", ".join(orfAAreports))
                                 if nt_call_dict_dict[Pos][consensus[Pos][2]] > args.min_count:
                                     if nt_call_dict_dict[Pos][consensus[Pos][2]] /total  > args.min_samp_abund:
@@ -2114,7 +2199,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                                         for ORFentry in OrfPosDict[Pos]:
                                             OrfPos = ORFentry[1]
                                             orf = ORFentry[0]
-                                            orfAAreports.append(orf+"_"+singletCodon(OrfPos, consensus[Pos][2], ref[3][orf]['nts'])[1])
+                                            orfAAreports.append(orf+"_"+singlet_codon_call(OrfPos, consensus[Pos][2], ref[3][orf]['nts'])[1])
                                         ntcall_lines['line'][Pos] += ("\t"+", ".join(orfAAreports))
 
                         ntcall_lines['line'][Pos] +=("\n")
@@ -2130,9 +2215,9 @@ def gbSAMparse(args, ref, file): # process SAM files
                 if args.ntvar == 1:
                         ntcallv_fh.close()
             else:
-                ntcall_fh.write("Position\tref NT\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
+                ntcall_fh.write("Position\tref NT\tA\tT\tC\tG\t-\tN\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
                 if args.ntvar == 1:
-                    ntcallv_fh.write("Position\tref NT\tA\tT\tC\tG\t-\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
+                    ntcallv_fh.write("Position\tref NT\tA\tT\tC\tG\t-\tN\tTotal\tPrimary NT\tCounts\tAbundance\tSecondary NT\tCounts\tAbundance\tTertiary NT\tCounts\tAbundance\n")
 
                 for Pos in sorted_Pos:
                     try:
@@ -2153,7 +2238,7 @@ def gbSAMparse(args, ref, file): # process SAM files
                                 iPos = Pos+(i/1000)
                                 i_nts = insertion.split('insert')[1]
                                 iabund = ins_nt_dict[Pos][insertion]/total
-                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
+                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
                                 ntcall_lines['line'][iPos] += f"\t{iabund:.3f}"
                                 ntcall_lines['line'][iPos] += "\n"
                                 i += 1
@@ -2164,7 +2249,8 @@ def gbSAMparse(args, ref, file): # process SAM files
                         sorted_calls = sorted(Pos_calls, key=Pos_calls.__getitem__, reverse=True)
 
                         ntcall_lines['line'][Pos] = str(Pos)+"\t"+ref[1][Pos-1]
-                        ntcall_lines['line'][Pos] += "\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])+"\t"+str(nt_call_dict_dict[Pos]['-'])
+                        ntcall_lines['line'][Pos] += "\t"+str(nt_call_dict_dict[Pos]['A'])+"\t"+str(nt_call_dict_dict[Pos]['T'])+"\t"+str(nt_call_dict_dict[Pos]['C'])+"\t"+str(nt_call_dict_dict[Pos]['G'])
+                        ntcall_lines['line'][Pos] += "\t"+str(nt_call_dict_dict[Pos]['-'])+"\t"+str(nt_call_dict_dict[Pos]['N'])
                         ntcall_lines['line'][Pos] += "\t"+str(total)+"\t"+sorted_calls[0]+"\t"+str(nt_call_dict_dict[Pos][sorted_calls[0]])+"\t"+f"{(nt_call_dict_dict[Pos][sorted_calls[0]]/total):.3f}"
 
                         if (nt_call_dict_dict[Pos][sorted_calls[1]] > args.min_count) and (nt_call_dict_dict[Pos][sorted_calls[1]] /total > args.min_samp_abund):
@@ -2188,15 +2274,22 @@ def gbSAMparse(args, ref, file): # process SAM files
             # END NT CALL OUT
             # print(f"End nt call out for {samp}")
         if args.covar == 1: # output covariants
-            printCovars(samp, sam_read_count, col_reads, coverage, args, aa_genome_pos_dict)
+            print_covars(samp, sam_read_count, col_reads, coverage, args, aa_genome_pos_dict)
             # print(f"End covar out for {samp}")
 
     print(f'End {file} main output')
 
-def cvdeconv(args, samp, covardict, sequence_dict): # covar deconvolution process
+def covar_deconv(args, samp, covariance_dict, sequence_dict): # covar deconvolution process
+    """
+    Called to
+    Parameters:
+    Functionality:
+    Returns
+    """
 
     passedseqs = {}
     preservedseqs = {}
+    covardict = covariance_dict
     seqdict = sequence_dict
     for seq in seqdict: # pass check for actual : expected abundance
         if seq != 'total' and seq != 'singles':
@@ -2296,6 +2389,12 @@ def cvdeconv(args, samp, covardict, sequence_dict): # covar deconvolution proces
     return()
 
 def dechim(args, seqs): # processing sequence dictionary to remove chimeras
+    """
+    Called to
+    Parameters:
+    Functionality:
+    Returns
+    """
 
 
     total = seqs['total']
@@ -2385,7 +2484,13 @@ def dechim(args, seqs): # processing sequence dictionary to remove chimeras
 
     return(seqs)
 
-def chimrm(args, samp, seqs): # chimera removed process
+def chim_rm(args, samp, seqs): # chimera removed process
+    """
+    Called to
+    Parameters:
+    Functionality:
+    Returns
+    """
 
     pre_len = len(seqs)
     inf_loop_shield = 0
@@ -2418,7 +2523,13 @@ def chimrm(args, samp, seqs): # chimera removed process
     print(f"End chim_rm out for {samp}") # END CHIM RM DECONV OUT
     return()
 
-def chimproc(args, samp):
+def chim_process(args, samp):
+    """
+    Called to
+    Parameters:
+    Functionality:
+    Returns
+    """
     if args.deconv == 1:
         in_covars = {}
         in_seqs = {}
@@ -2456,12 +2567,12 @@ def chimproc(args, samp):
                                 in_covars['singles'][lineparts[0]] = int(lineparts[1])
             covin_file.close()
             if in_covars and in_seqs:
-                cvdeconv(args, samp, in_covars, in_seqs)
+                covar_deconv(args, samp, in_covars, in_seqs)
         except:
             print(f"Reading of {samp}_covars.tsv failed")
 
         if args.chim_rm == 1:
-            chimrm(args, samp, in_seqs)
+            chim_rm(args, samp, in_seqs)
 
     elif args.chim_rm == 1:
             in_covars = {}
@@ -2479,11 +2590,17 @@ def chimproc(args, samp):
                             if float(lineparts[2]) >= args.chim_in_abund:
                                 in_seqs[lineparts[0]] = float(lineparts[1])
                 seqin_file.close()
-                chimrm(args, samp, in_seqs)
+                chim_rm(args, samp, in_seqs)
             except:
                 print(f"Failed to Process {samp}_unique_seqs.tsv")
 
 def collect_lines(dict_dict, all_dict, file, args):
+    """
+    Called to
+    Parameters:
+    Functionality:
+    Returns
+    """
 
     sample_line = ''
     try:
@@ -2508,6 +2625,12 @@ def collect_lines(dict_dict, all_dict, file, args):
         return(dict_dict, all_dict)
 
 def collection(args):
+    """
+    Called to
+    Parameters:
+    Functionality:
+    Returns
+    """
 
     covar_dict_dict = {}
     seq_dict_dict = {}
@@ -2605,10 +2728,10 @@ def main():
             args.ref = ''
             if ref[2] == 'fasta':
                 with Pool(processes=args.mp) as pool:
-                    pool.starmap(faSAMparse, zip(itertools.repeat(args), itertools.repeat(ref), SAMs))
+                    pool.starmap(fa_sam_parse, zip(itertools.repeat(args), itertools.repeat(ref), SAMs))
             elif ref[2] == 'gb':
                 with Pool(processes=args.mp) as pool:
-                    pool.starmap(gbSAMparse, zip(itertools.repeat(args), itertools.repeat(ref), SAMs))
+                    pool.starmap(gb_sam_parse, zip(itertools.repeat(args), itertools.repeat(ref), SAMs))
             print(f"End Sam Parsing Output")
     else:
         print('No reference provided, skipping SAM parsing')
@@ -2621,7 +2744,7 @@ def main():
             if file.endswith('_seqs.tsv'): # get unique sequences for chimera removal
                 seq_files.append(file[0:-16])
         with Pool(processes=args.mp) as pool:
-            pool.starmap(chimproc, zip(itertools.repeat(args), seq_files))
+            pool.starmap(chim_process, zip(itertools.repeat(args), seq_files))
 
 # begin collection of sample outputs
     if args.collect == 1:
