@@ -3,7 +3,7 @@
 # Writen by Devon Gregory with assistance from Christopher Bottoms
 # University of Missouri
 # Distributed under GNU GENERAL PUBLIC LICENSE v3
-# last editted on 202204018
+# last editted on 202204025
 
 import os
 import sys
@@ -22,7 +22,6 @@ Clean up / polish / add comments
 add --verbose --quiet options
 """
 
-# process for collecing command line arguments
 def arg_parser():
     """
     Called to get the arguments passed by the command line and process them
@@ -54,7 +53,7 @@ def arg_parser():
         type=int,
         default=1,
         choices=[0, 1],
-        help='Enable/Disable (1/0) use of counts in sequence IDs, default enabled (--use_count 1)'
+        help='Enable/Disable (1/0) use of counts in sequence IDs, default enabled (--use_count 1) (default: 1)'
     )
     parser.add_argument(
         '--min_count',
@@ -103,28 +102,28 @@ def arg_parser():
         type=int,
         default=0,
         choices=[0, 1],
-        help='Enable/Disable (1/0) using tiles covering positions instead of minimum nt coverage to calculate abundance of covariants (--covar_tile_coverage), require --wgs 1'
+        help='Enable/Disable (1/0) using tiles covering positions instead of minimum nt coverage to calculate abundance of covariants (--covar_tile_coverage), require --wgs 1 (default: 0)'
     )
     parser.add_argument(
         '--AAreport',
         type=int,
         default=1,
         choices=[0, 1],
-        help='Enable/Disable (1/0) amino acid reporting, default enabled (--AAreport 1)'
+        help='Enable/Disable (1/0) amino acid reporting, default enabled (--AAreport 1) (default: 1)'
     )
     parser.add_argument(
         '--AAcodonasMNP',
         type=int,
         default=1,
         choices=[0, 1],
-        help='Enable/Disable (1/0) reporting multiple nt changes in a single codon as one polymorphism, default enabled (--AAcodonasMNP 1), requires AAreport enabled'
+        help='Enable/Disable (1/0) reporting multiple nt changes in a single codon as one polymorphism, default enabled (--AAcodonasMNP 1), requires AAreport enabled (default: 1)'
     )
     parser.add_argument(
         '--AAcentered',
         type=int,
         default=0,
         choices=[0, 1],
-        help='Enable/Disable (1/0) amino acid centered seq and covar outputs for .gb processing (--AAcentered 1), requires AAreport enabled'
+        help='Enable/Disable (1/0) amino acid centered seq and covar outputs for .gb processing (--AAcentered 0), requires AAreport enabled (default: 0)'
     )
     parser.add_argument(
         '--chim_in_abund',
@@ -167,7 +166,7 @@ def arg_parser():
         '--autopass',
         type=float,
         default=.3,
-        help='threshold for a sequence to automatically pass the covar pass checking'
+        help='threshold for a sequence to automatically pass the covar pass checking (default: 0.3)'
     )
     parser.add_argument(
         '--colID',
@@ -180,76 +179,76 @@ def arg_parser():
         type=int,
         default=1,
         choices=[0, 1],
-        help='Enable/Disable (1/0) collection step, default enabled (--collect 1)'
+        help='Enable/Disable (1/0) collection step, default enabled (--collect 1) (default: 1)'
     )
     parser.add_argument(
         '--read',
         type=int,
         default=0,
         choices=[0, 1],
-        help='Enable/Disable (1/0) reads output, default disabled (--nt_call 0)'
+        help='Enable/Disable (1/0) reads output, default disabled (--read 0) (default: 0)'
     )
     parser.add_argument(
         '--nt_call',
         type=int,
         default=1,
         choices=[0, 1],
-        help='Enable/Disable (1/0) nt_call output, default enabled (--nt_call 1)'
+        help='Enable/Disable (1/0) nt_call output, default enabled (--nt_call 1) (default: 1)'
     )
     parser.add_argument(
         '--ntvar',
         type=int,
         default=0,
         choices=[0, 1],
-        help='Enable/Disable (1/0) nt_call output, default enabled (--nt_call 1)'
+        help='Enable/Disable (1/0) nt_call output, default enabled (--ntvar 1) (default: 0)'
     )
     parser.add_argument(
         '--indel',
         type=int,
         default=1,
         choices=[0, 1],
-        help='Enable/Disable (1/0) indel output, default enabled (--indel 1)'
+        help='Enable/Disable (1/0) indel output, default enabled (--indel 1) (default: 1)'
         )
     parser.add_argument(
         '--seq',
         type=int,
         default=1,
         choices=[0, 1],
-        help='Enable/Disable (1/0) unique seq output, default enabled (--seq 1)'
+        help='Enable/Disable (1/0) unique seq output, default enabled (--seq 1) (default: 1)'
     )
     parser.add_argument(
         '--covar', type=int,
         default=1,
         choices=[0, 1],
-        help='Enable/Disable (1/0) covar output, default enabled (--covar 1)'
+        help='Enable/Disable (1/0) covar output, default enabled (--covar 1) (default: 1)'
     )
     parser.add_argument(
         '--pass_out',
         type=int,
         default=0,
         choices=[0, 1],
-        help='Enable/Disable (1/0) covar_pass output, default disabled (--pass_out 0)'
+        help='Enable/Disable (1/0) covar_pass output, default disabled (--pass_out 0) (default: 0)'
     )
     parser.add_argument(
         '--chim_rm',
         type=int,
         default=1,
         choices=[0, 1],
-        help='Enable/Disable (1/0) chim_rm output, default enabled (--chim_rm 1)'
+        help='Enable/Disable (1/0) chim_rm output, default enabled (--chim_rm 1) (default: 1)'
     )
     parser.add_argument(
         '--deconv',
         type=int,
         default=1,
         choices=[0, 1],
-        help='Enable/Disable (1/0) covar deconv, default enabled (--deconv 1)'
+        help='Enable/Disable (1/0) covar deconv, default enabled (--deconv 1) (default: 1)'
     )
     parser.add_argument(
         '--wgs',
         type=int,
         default=0,
         choices=[0, 1],
-        help='Enable/Disable (1/0) covar deconv, default enabled (--deconv 1)'
+        help='Enable/Disable (1/0) covar deconv, default enabled (--wgs 1)(default: 0)'
     )
     parser.add_argument(
         '--mp',
@@ -272,24 +271,15 @@ def arg_parser():
         print(f"--min_count must be 1 or greter, setting to 1")
         args.min_count=1
 
-    if args.min_samp_abund < 0:
-        print(f"--min_samp_abund must be non-negative and < 1, defaulting to .001")
-        args.min_samp_abund=0.001
-    elif args.min_samp_abund >= 1:
+    if args.min_samp_abund < 0 or args.min_samp_abund >= 1:
         print(f"--min_samp_abund must be non-negative and < 1, defaulting to .001")
         args.min_samp_abund=0.001
 
-    if args.min_col_abund < 0:
-        print(f"--min_col_abund must be non-negative and < 1, defaulting to .01")
-        args.min_col_abund=0.01
-    elif args.min_col_abund >= 1:
+    if args.min_col_abund < 0 or args.min_col_abund >= 1:
         print(f"--min_col_abund must be non-negative and < 1, defaulting to .01")
         args.min_col_abund=0.01
 
-    if args.ntabund < 0:
-        print(f"--ntabund must be non-negative and < 1, defaulting to .001")
-        args.ntabund=0.001
-    elif args.ntabund >= 1:
+    if args.ntabund < 0 or args.ntabund >= 1:
         print(f"--ntabund must be non-negative and < 1, defaulting to .001")
         args.ntabund=0.001
 
@@ -305,12 +295,9 @@ def arg_parser():
         print(f"--max_covar must be non-negative, defaulting to 8")
         args.max_covar=8
 
-    if args.chim_in_abund < 0:
+    if args.chim_in_abund < 0 or args.chim_in_abund >= 1:
         print(f"--chim_in_abund must be non-negative, defaulting to 0.001")
-        args.chim_in_abund=0.001
-    elif args.chim_in_abund >= 1:
-        print(f"--in_abund must be non-negative and < 1, defaulting to 001")
-        args.chim_in_abund=0.001
+        args.chim_in_abund = 0.001
 
     if args.alpha <= 0:
         print("--alpha must be positive, defaulting to 1.2")
@@ -334,7 +321,7 @@ def arg_parser():
 
     return(args)
 
-def get_ref(args): # get the reference ID and sequence from the FASTA file.  Will only get the first.
+def get_ref(args):
     """
     Called to get reference data from file provided in the args
     Parameters:
@@ -347,39 +334,39 @@ def get_ref(args): # get the reference ID and sequence from the FASTA file.  Wil
     Returns reference ID, nt sequence, file type and amino acid sequences encoded by the nt seq for fasta files or the CDS reported by genbank files
     """
     n=0
-    refID = ''
-    reftype = ''
-    refseq = ''
-    refORFS = {}
+    ref_id = ''
+    ref_type = ''
+    ref_seq = ''
+    ref_orfs = {}
     if args.ref:
         ref = args.ref
-        firstline = ref.readline()
-        if firstline.startswith('>'):
-            reftype = 'fasta'
+        first_line = ref.readline()
+        if first_line.startswith('>'):
+            ref_type = 'fasta'
             n+=1
-            refID = firstline[1:].strip("\n\r")
+            ref_id = first_line[1:].strip("\n\r").split(" ")[0]
             for line in ref:
                 if line.startswith('>'):
                     n+=1
                     if n > 1:
                         break
-                    refID = line[1:].strip("\n\r")
+                    ref_id = line[1:].strip("\n\r")
                 elif n == 1:
-                    refseq = refseq + line.strip("\n\r")
-            refseq = refseq.upper()
-            refprot = ''
+                    ref_seq = ref_seq + line.strip("\n\r")
+            ref_seq = ref_seq.upper()
+            ref_prot = ''
             if args.AAreport == 1:
-                for x in range(0, (len(refseq))//3):
-                    AA = aa_call(refseq[x*3]+refseq[x*3+1]+refseq[x*3+2])
-                    refprot = refprot + AA
-                if (len(refseq))%3 != 0:
-                    refprot = refprot + '?'
-                refORFS = [refID, refprot]
-        elif firstline.upper().startswith("LOCUS"):
-            reftype = 'gb'
+                for x in range(0, (len(ref_seq))//3):
+                    amino_acid = aa_call(ref_seq[x*3]+ref_seq[x*3+1]+ref_seq[x*3+2])
+                    ref_prot = ref_prot + amino_acid
+                if (len(ref_seq))%3 != 0:
+                    ref_prot = ref_prot + '?'
+                ref_orfs = [ref_id, ref_prot]
+        elif first_line.upper().startswith("LOCUS"):
+            ref_type = 'gb'
             collect = "Null"
-            ORFS = {}
-            rfs = []
+            orfs = {}
+            reading_frames = []
             trans = 0
             nts = ""
             for line in ref:
@@ -387,17 +374,17 @@ def get_ref(args): # get the reference ID and sequence from the FASTA file.  Wil
                     split_line = line.strip("\n\r").split(" ")
 
                     if split_line[0].upper() == "VERSION":
-                        refID = split_line[-1]
+                        ref_id = split_line[-1]
                     elif "CDS" in line:
                         collect = "CDS"
                         if "join" in line:
                             startstops = split_line[-1].strip("join()").split(",")
                             for startstop in startstops:
-                                rfs.append([int(startstop.split(".")[0]) , int(startstop.split(".")[-1])])
+                                reading_frames.append([int(startstop.split(".")[0]) , int(startstop.split(".")[-1])])
 
                         else:
                             startstop = split_line[-1].split(".")
-                            rfs.append([int(startstop[0]) , int(startstop[-1])])
+                            reading_frames.append([int(startstop[0]) , int(startstop[-1])])
 
                     if split_line[0].upper() == "ORIGIN":
                         collect = "SEQ"
@@ -417,34 +404,34 @@ def get_ref(args): # get the reference ID and sequence from the FASTA file.  Wil
                         except:
                             product = gene
 
-                        orfID = product.replace(' ', '_')
+                        orf_id = product.replace(' ', '_')
                         n = 1
-                        if orfID in ORFS:
-                            newID = orfID + '.' + str(n)
-                            while newID in ORFS:
+                        if orf_id in orfs:
+                            new_id = orf_id + '.' + str(n)
+                            while new_id in orfs:
                                 n += 1
-                                newgene = orfID + '.' + str(n)
-                            orfID = newgene
-                        ORFS[orfID] = { "reading frames" : rfs
+                                new_id = orf_id + '.' + str(n)
+                            orf_id = new_id
+                        orfs[orf_id] = { "reading frames" : reading_frames
                                     }
-                        rfs = []
-                        ORFS[orfID]["AAs"] = line.strip("\r\n").split('"')[1]
+                        reading_frames = []
+                        orfs[orf_id]["AAs"] = line.strip("\r\n").split('"')[1]
 
                         if not line.strip("\r\n")[-1] == '"':
                             trans = 1
                         else:
-                            ORFS[orfID]["AAs"] += "*"
+                            orfs[orf_id]["AAs"] += "*"
                             gene = ""
-                            orfID = ""
+                            orf_id = ""
                             collect = "Null"
 
                     elif trans == 1:
-                        ORFS[orfID]["AAs"] = ORFS[orfID]["AAs"] + line.strip(' "\n\r')
+                        orfs[orf_id]["AAs"] = orfs[orf_id]["AAs"] + line.strip(' "\n\r')
                         if line.strip("\r\n")[-1] == '"':
-                            ORFS[orfID]["AAs"] += "*"
+                            orfs[orf_id]["AAs"] += "*"
                             trans = 0
                             gene = ""
-                            orfID = ""
+                            orf_id = ""
                             collect = "Null"
 
                 elif collect == "SEQ":
@@ -455,17 +442,17 @@ def get_ref(args): # get the reference ID and sequence from the FASTA file.  Wil
                                 ntsline += c
                         nts += ntsline
             if args.AAreport == 1:
-                for gene in ORFS:
+                for gene in orfs:
                     orfnts = ''
-                    for rf in ORFS[gene]['reading frames']:
+                    for rf in orfs[gene]['reading frames']:
                         orfnts += nts[rf[0]-1:rf[1]]
-                    ORFS[gene]["nts"] = orfnts.upper()
-            refORFS = ORFS
-            refseq = nts.upper()
+                    orfs[gene]["nts"] = orfnts.upper()
+            ref_orfs = orfs
+            ref_seq = nts.upper()
 
-    return(refID, refseq, reftype, refORFS)
+    return(ref_id, ref_seq, ref_type, ref_orfs)
 
-def aa_call(codon): # amino acid / codon dictionary to return encoded AAs
+def aa_call(codon):
     """
     Called to return an amino acid enoded by the passed codon
     Parameters:
@@ -474,7 +461,7 @@ def aa_call(codon): # amino acid / codon dictionary to return encoded AAs
     looks up the codon in the dict and returns its value
     Returns amino acid or '?' if the codon isn't a valid codon
     """
-    AAdict = {
+    AADict = {
         'TTT' : 'F',
         'TTC' : 'F',
         'TTA' : 'L',
@@ -546,12 +533,12 @@ def aa_call(codon): # amino acid / codon dictionary to return encoded AAs
         '---' : '-'
     }
     AA = '?'
-    if codon in AAdict:
-        AA = AAdict[codon]
+    if codon in AADict:
+        AA = AADict[codon]
 
     return(AA)
 
-def singlet_codon_call(nt_pos, nt, ref_nts): # process to return the AA and protein seq. position based on the reference and provided nt seq position and nt
+def singlet_codon_call(nt_pos, nt, ref_nts):
     """
     Called to determine the amino acid and its position based on a single nt change relative to a referernce sequence
     Parameters:
@@ -577,7 +564,7 @@ def singlet_codon_call(nt_pos, nt, ref_nts): # process to return the AA and prot
 
     return(aa_pos+1, aa_call(codon))
 
-def sam_line_parser(args, ref, file): # gets read mapping information from SAM and converts it to a PM called line
+def sam_line_parser(args, ref, file):
     """
     Called to pasrse through a sam file line by line and collect information for further processing
     Parameters:
@@ -607,51 +594,52 @@ def sam_line_parser(args, ref, file): # gets read mapping information from SAM a
     sam_fh = open(file, "r")
     for line in sam_fh:
         if not line.startswith('@'): # ignore header lines
-            splitline = line.split("\t")
-            if ref[0].upper().startswith(splitline[2].upper()): # check map ID matches referecne ID
-                if int(splitline[4]) > 0:  # Check mapping score is positive
+            split_line = line.split("\t")
+            if ref[0].upper() == split_line[2].upper(): # check map ID matches referecne ID
+                if int(split_line[4]) > 0:  # Check mapping score is positive
 
                     sam_line_count += 1
-                    if splitline[9].upper().strip('ATCGN-'):
-                        print(f"Invalid character(s) (splitline[9].upper().strip('ATCGN-')) in sequence for line {sam_line_count}, ID {splitline[0]}")
+                    query_seq = split_line[9].upper()
+                    if query_seq.strip('ATCGN-'):
+                        print(f"Invalid character(s) {query_seq.strip('ATCGN-')} in sequence for line {sam_line_count}, ID {split_line[0]}")
+                        print("skipping")
                         continue
+
+                    CIGAR = split_line[5]
+                    cigar_num = CIGAR
+                    for c in "MIDSH":
+                        cigar_num = cigar_num.replace(c,"")
+                        
+                    if not cigar_num.isnumeric():
+                        print(f"Non-standard CIGAR string {CIGAR} {cigar_num} for line {sam_line_count}, ID {split_line[0]}. Skipping")
+                        continue
+
                     reads_count=1
                     if args.use_count == 1: # get the unique sequence counts
-                        if '-' in splitline[0] and '=' in splitline[0]:
+                        if '-' in split_line[0] and '=' in split_line[0]:
                             try:
-                                eq_split = splitline[0].split('=')
-                                dash_split = splitline[0].split('-')
+                                eq_split = split_line[0].split('=')
+                                dash_split = split_line[0].split('-')
                                 if len(eq_split[-1]) > len(dash_split[-1]):
                                     reads_count=int(dash_split[-1])
                                 else:
                                     reads_count=int(eq_split[-1])
                             except:
                                 pass
-
-                        elif '-' in splitline[0]:
+                        elif '-' in split_line[0]:
                             try:
-                                reads_count=int(splitline[0].split('-')[-1])
+                                reads_count=int(split_line[0].split('-')[-1])
                             except:
                                 pass
-
-                        elif '=' in splitline[0]:
+                        elif '=' in split_line[0]:
                             try:
-                                reads_count=int(splitline[0].split('=')[-1])
+                                reads_count=int(split_line[0].split('=')[-1])
                             except:
                                 pass
-
                     sam_read_count += reads_count
 
-                    # if sam_read_count % 5000 == 0:
-                        # print(f"At read {sam_read_count} of {samp}")
-                    # if sam_line_count % 5000 == 0:
-                        # print(f"At line {sam_line_count} of {samp} SAM")
-
-                    CIGAR = splitline[5]
-                    Pos = int(splitline[3])
-
-                    readID = splitline[0]
-                    query_seq = splitline[9].upper()
+                    read_start_pos = int(split_line[3])
+                    readID = split_line[0]
                     run_length = 0
                     query_pos = 0
                     q_pars_pos = 0
@@ -662,38 +650,31 @@ def sam_line_parser(args, ref, file): # gets read mapping information from SAM a
                             if C == 'S':
                                 query_pos = query_pos + run_length
                             # if C == 'H':
-
                             if C == 'I':
                                 if query_pos > 0:
-                                    # add insertion to dict
-                                    iPos = q_pars_pos+Pos
-
+                                    insert_position = q_pars_pos+read_start_pos
                                     iSeq = query_seq[query_pos: query_pos+run_length]
-                                    istring = str(iPos)+'-insert'+iSeq
-
+                                    istring = str(insert_position)+'-insert'+iSeq
                                     mutations.append(istring)
-
                                     if args.nt_call == 1:
+                                        # add insertion to dict
                                         try:
-                                            ins_nt_dict[iPos]
+                                            ins_nt_dict[insert_position]
                                         except:
-                                            ins_nt_dict[iPos] = {istring : reads_count}
+                                            ins_nt_dict[insert_position] = {istring : reads_count}
                                         else:
                                             try:
-                                                ins_nt_dict[iPos][istring] += reads_count
+                                                ins_nt_dict[insert_position][istring] += reads_count
                                             except:
-                                                ins_nt_dict[iPos][istring] = reads_count
+                                                ins_nt_dict[insert_position][istring] = reads_count
 
                                     query_pos = query_pos + run_length
 
                             elif C == 'D':
-
-                                delPos = q_pars_pos+Pos
+                                delPos = q_pars_pos+read_start_pos
                                 delnts = ref[1][delPos-1:delPos+run_length-1]
                                 delstring = delnts+str(delPos)+'-'+str(delPos+run_length-1)+'del'
-
                                 mutations.append(delstring)
-
                                 if args.nt_call == 1:
                                     for N in range(delPos, delPos+int(run_length)):
                                         try:
@@ -708,18 +689,14 @@ def sam_line_parser(args, ref, file): # gets read mapping information from SAM a
                                             nt_call_dict_dict[N]['-'] = reads_count
                                         else:
                                             nt_call_dict_dict[N]['-'] += reads_count
-
                                 q_pars_pos = q_pars_pos + run_length
 
                             elif C == 'M':
                                 offset = q_pars_pos-query_pos
-                                refPos = Pos+offset
-
+                                refPos = read_start_pos+offset
                                 for ntPos in range(query_pos, query_pos+run_length):
-
                                     if query_seq[ntPos] != ref[1][refPos+ntPos-1]:
                                         mutations.append(ref[1][refPos+ntPos-1]+str(refPos+ntPos)+query_seq[ntPos])
-
                                     if args.nt_call == 1:
                                         if not query_seq[ntPos] in ['A', 'T' ,'C', 'G', 'N', '-']:
                                             mut_nt = 'N'
@@ -737,21 +714,18 @@ def sam_line_parser(args, ref, file): # gets read mapping information from SAM a
                                             nt_call_dict_dict[refPos+ntPos][mut_nt] = reads_count
                                         else:
                                             nt_call_dict_dict[refPos+ntPos][mut_nt] += reads_count
-
-
                                 q_pars_pos = q_pars_pos + run_length
                                 query_pos = query_pos + run_length
 
                             run_length = 0
 
-
                         else:
                             run_length = (10 * run_length) + int(C)
                     # END CIGAR PARSE
 
-                    seq_end_pos = Pos+q_pars_pos-1
+                    seq_end_pos = read_start_pos+q_pars_pos-1
                     if args.wgs == 1 or args.nt_call == 1:
-                        for i in range(Pos, seq_end_pos+1): # update coverage
+                        for i in range(read_start_pos, seq_end_pos+1): # update coverage
                             try:
                                 coverage[i] += reads_count
                             except:
@@ -759,32 +733,31 @@ def sam_line_parser(args, ref, file): # gets read mapping information from SAM a
 
                     if len(mutations) == 0: # record reference counts
                         if args.read == 1:
-                            reads_list.append([readID, 'Reference', Pos, seq_end_pos])
+                            reads_list.append([readID, 'Reference', read_start_pos, seq_end_pos])
                         if args.seq == 1 or args.covar == 1 or args.indel == 1:
                             try:
                                 col_reads['Reference']
                             except:
-                                col_reads['Reference'] = { str(Pos)+'x'+str(seq_end_pos): reads_count}
+                                col_reads['Reference'] = { str(read_start_pos)+'x'+str(seq_end_pos): reads_count}
                             else:
                                 try:
-                                    col_reads['Reference'][str(Pos)+'x'+str(seq_end_pos)] += reads_count
+                                    col_reads['Reference'][str(read_start_pos)+'x'+str(seq_end_pos)] += reads_count
                                 except:
-                                    col_reads['Reference'][str(Pos)+'x'+str(seq_end_pos)] = reads_count
+                                    col_reads['Reference'][str(read_start_pos)+'x'+str(seq_end_pos)] = reads_count
                     else:
                         mutations = " ".join(mutations)
                         if args.read == 1:
-                            reads_list.append([readID, mutations, Pos, seq_end_pos])
+                            reads_list.append([readID, mutations, read_start_pos, seq_end_pos])
                         if args.seq == 1 or args.covar == 1 or args.indel == 1:
                             try:
                                 col_reads[mutations]
                             except:
-                                col_reads[mutations] = { str(Pos)+'x'+str(seq_end_pos): reads_count}
+                                col_reads[mutations] = { str(read_start_pos)+'x'+str(seq_end_pos): reads_count}
                             else:
                                 try:
-                                    col_reads[mutations][str(Pos)+'x'+str(seq_end_pos)] += reads_count
+                                    col_reads[mutations][str(read_start_pos)+'x'+str(seq_end_pos)] += reads_count
                                 except:
-                                    col_reads[mutations][str(Pos)+'x'+str(seq_end_pos)] = reads_count
-
+                                    col_reads[mutations][str(read_start_pos)+'x'+str(seq_end_pos)] = reads_count
 
     sam_fh.close()
     # END SAM LINES
@@ -805,29 +778,29 @@ def fasta_snp_call(mut, ref):
     if 'ins' in mut:
         istring = ''
         iSeq = mut.split('insert')[1]
-        iPos = int(mut.split('-')[0])
+        insert_position = int(mut.split('-')[0])
         run_length = len(iSeq)
         if (run_length % 3 == 0):
             iProt = ''
-            if iPos % 3 == 1:
+            if insert_position % 3 == 1:
                 for x in range(0, (run_length//3)):
                     AA = aa_call(iSeq[x*3]+iSeq[x*3+1]+iSeq[x*3+2])
                     iProt += AA
-                istring += mut+'(' + str(((iPos-1)//3)+1) + iProt + ')'
-            elif iPos % 3 == 2:
-                ipSeq = ref[1][iPos-2]+iSeq+ref[1][iPos-1:iPos+1]
+                istring += mut+'(' + str(((insert_position-1)//3)+1) + iProt + ')'
+            elif insert_position % 3 == 2:
+                ipSeq = ref[1][insert_position-2]+iSeq+ref[1][insert_position-1:insert_position+1]
                 for x in range(0, (run_length//3)+1):
                     AA = aa_call(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
                     iProt += AA
-                istring += ref[1][iPos-2:iPos+1]+str(iPos-1)+'-'+str(iPos+1)+ipSeq+'insert(' + ref[3][1][(iPos-1)//3] + str(((iPos-1)//3)+1) + iProt + ')'
+                istring += ref[1][insert_position-2:insert_position+1]+str(insert_position-1)+'-'+str(insert_position+1)+ipSeq+'insert(' + ref[3][1][(insert_position-1)//3] + str(((insert_position-1)//3)+1) + iProt + ')'
             else:
-                ipSeq = ref[1][iPos-3:iPos-1]+iSeq+ref[1][iPos-1]
+                ipSeq = ref[1][insert_position-3:insert_position-1]+iSeq+ref[1][insert_position-1]
                 for x in range(0, (run_length//3)+1):
                     AA = aa_call(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
                     iProt += AA
-                istring += ref[1][iPos-3:iPos]+str(iPos-2)+'-'+str(iPos)+ipSeq+'insert(' + ref[3][1][(iPos-1)//3] + str(((iPos-1)//3)+1) + iProt + ')'
+                istring += ref[1][insert_position-3:insert_position]+str(insert_position-2)+'-'+str(insert_position)+ipSeq+'insert(' + ref[3][1][(insert_position-1)//3] + str(((insert_position-1)//3)+1) + iProt + ')'
         else:
-            istring += mut+'('+ str(((iPos-1)//3)+1) +'fs)'
+            istring += mut+'('+ str(((insert_position-1)//3)+1) +'fs)'
         return(istring)
 
     elif 'del' in mut:
@@ -880,15 +853,15 @@ def gb_snp_call(mut, ref):
 
     if 'ins' in mut:
         iSeq = mut.split('insert')[1]
-        iPos = int(mut.split('-')[0])
+        insert_position = int(mut.split('-')[0])
         run_length = len(iSeq)
         iProt = ''
         for orf in ref[3]:
             orflength = 0
             for rf in ref[3][orf]['reading frames']:
-                if iPos >= rf[0] and iPos <= rf[1]:
+                if insert_position >= rf[0] and insert_position <= rf[1]:
                     iProt += "|(" + orf + ":"
-                    orfPos = 1 + iPos - rf[0] + orflength
+                    orfPos = 1 + insert_position - rf[0] + orflength
                     AA = ''
                     if (run_length % 3 == 0):
                         if orfPos % 3 == 1:
@@ -897,15 +870,15 @@ def gb_snp_call(mut, ref):
                             iProt += str(orfPos)+'insert'+iSeq+'(' + str(((orfPos-1)//3)+1) + AA
                         else:
                             if orfPos % 3 == 2:
-                                ipSeq = ref[1][iPos-2]+iSeq+ref[1][iPos-1:iPos+1]
+                                ipSeq = ref[1][insert_position-2]+iSeq+ref[1][insert_position-1:insert_position+1]
                                 for x in range(0, (run_length//3)+1):
                                     AA += aa_call(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
-                                iProt += ref[1][iPos-2:iPos+1]+str(orfPos-1)+'-'+str(orfPos+1)+ipSeq
+                                iProt += ref[1][insert_position-2:insert_position+1]+str(orfPos-1)+'-'+str(orfPos+1)+ipSeq
                             else:
-                                ipSeq = ref[1][iPos-3:iPos-1]+iSeq+ref[1][iPos-1]
+                                ipSeq = ref[1][insert_position-3:insert_position-1]+iSeq+ref[1][insert_position-1]
                                 for x in range(0, (run_length//3)+1):
                                     AA += aa_call(ipSeq[x*3]+ipSeq[x*3+1]+ipSeq[x*3+2])
-                                iProt += ref[1][iPos-3:iPos]+str(orfPos-2)+'-'+str(orfPos)+ipSeq
+                                iProt += ref[1][insert_position-3:insert_position]+str(orfPos-2)+'-'+str(orfPos)+ipSeq
                             iProt += "insert(" + ref[3][orf]["AAs"][(orfPos-1)//3] + str(((orfPos-1)//3)+1) + AA
                     else:
                         iProt += str(orfPos)+'insert'+iSeq+'(' + str(((orfPos-1)//3)+1) + 'fs'
@@ -981,13 +954,13 @@ def gb_snp_call(mut, ref):
                 orflength += rf[1] - rf[0] + 1
         return(mut+PM)
 
-def get_combos(qlist, clen): # returns combinations of single polymorphisms in a sequence
+def get_combos(qlist, clen):
     """
     Called to get combinations of cosegregating polymorphisms
     Parameters:
     qlist - list of polymorphisms
     clen - number of polymorphisms to report together
-    
+
     Functionality:
         uses itertools.combinations to get sets of combinations for each length
     Returns list of combinations
@@ -1008,7 +981,7 @@ def print_reads(samp, reads_list, col_reads, args):
     reads_list - list of read lines
     col_reads - dict of collapsed sequences with amino acid seq if applicable
     args - arguement values
-    
+
     Functionality:
         opens output file and writes lines
     Returns nothing
@@ -1033,7 +1006,7 @@ def print_unique_seq(samp, sam_read_count, col_reads, coverage, args):
     col_reads - dict of collapsed sequences with amino acid seq if applicable
     coverage - dict of coverage at reference positions
     args - arguement values
-    
+
     Functionality:
         opens output file(s), collects and sorts unique sequences for wgs mode or not, and writes lines
     Returns nothing
@@ -1118,7 +1091,7 @@ def print_indels(samp, sam_read_count, indel_dict, coverage, args):
     indel_reads - dict of indels
     coverage - dict of coverage at reference positions
     args - arguement values
-    
+
     Functionality:
         sorts indels and gets abundance for wgs mode or not, if any indels pass abundance check, opens file and writes lines
     Returns nothing
@@ -1159,9 +1132,9 @@ def print_covars(samp, sam_read_count, col_reads, coverage, args, aa_centered):
     coverage - dict of coverage at reference positions
     args - arguement values
     aa_centered- dict of coverage at posistion of polymoprhisms in the aa centered form
-    
+
     Functionality:
-        parses each unique variant sequence, normal and aa centered, if applicable, to get the cosegregating variations and tiled coverage if enabled, 
+        parses each unique variant sequence, normal and aa centered, if applicable, to get the cosegregating variations and tiled coverage if enabled,
         if there are combos that meet the count threshold output files are opened and lines written
     Returns nothing
     """
@@ -1296,7 +1269,7 @@ def get_nt_indels(col_reads):
                         indel_dict[mut] = sum(col_reads[SNP_sequence].values())
     return(indel_dict)
 
-def fa_sam_parse(args, ref, file): # process SAM files
+def fa_sam_parse(args, ref, file):
     """
     Called to handle main sam info parsing logic when using a fasta reference
     Parameters:
@@ -1332,13 +1305,7 @@ def fa_sam_parse(args, ref, file): # process SAM files
                         curMNP = ''
                         last_codon = -1
                         fshift = 0
-                        for mut in SNP_sequence.split(' '):
-                            if mut.isnumeric():
-                                if curMNP:
-                                    MNPs.append(curMNP)
-                                MNPs.append([[mut, mut]])
-                                curMNP = ''
-                                continue
+                        for mut in SNP_sequence.split(' '): # collect together mutations that affect the same codon(s)
                             startPos = int(mut.split('-')[0].strip('ATCGN'))
                             endPos = startPos
                             if 'del' in mut:
@@ -1412,7 +1379,7 @@ def fa_sam_parse(args, ref, file): # process SAM files
                         if MNPs:
                             combinedmut = []
                             for entry in MNPs:
-                                if len(entry) > 1:
+                                if len(entry) > 1: # re-calcs sequence for codons affected by multiple changes
                                     nt_to_AA_key = []
                                     for snpmut in entry:
                                         nt_to_AA_key.append(snpmut[0])
@@ -1482,9 +1449,7 @@ def fa_sam_parse(args, ref, file): # process SAM files
                                         nt_to_AA_dict[nt_to_AA_key] = newmutstring
                                         newmut = newmutstring
                                 else:
-                                    if entry[0][0].isnumeric():
-                                        newmut = entry[0][0]
-                                    elif entry[0][0] in nt_to_AA_dict:
+                                    if entry[0][0] in nt_to_AA_dict:
                                         newmut = nt_to_AA_dict[entry[0][0]]
                                     else:
                                         mutstring = fasta_snp_call(entry[0][0], ref)
@@ -1504,8 +1469,6 @@ def fa_sam_parse(args, ref, file): # process SAM files
                     except:
                         mutations =[]
                         for mut in SNP_sequence.split(' '):
-                            if mut.isnumeric():
-                                newmut = mut
                             try:
                                 newmut = nt_to_AA_dict[mut]
                             except:
@@ -1536,7 +1499,7 @@ def fa_sam_parse(args, ref, file): # process SAM files
         if args.covar == 1:
             print_covars(samp, sam_read_count, col_reads, coverage, args, {})
 
-        if args.nt_call == 1: # out put nt calls
+        if args.nt_call == 1:
             ntcall_lines = {'line' : {},
                             'variant' : {}
                             }
@@ -1569,7 +1532,7 @@ def fa_sam_parse(args, ref, file): # process SAM files
                         else:
                             i = 1
                             for insertion in ins_nt_dict[Pos]:
-                                iPos = Pos+(i/1000)
+                                insert_position = Pos+(i/1000)
                                 i_nts = insertion.split('insert')[1]
                                 try:
                                     i_AAs = nt_to_AA_dict[insertion].split('(')[1].strip(')')
@@ -1577,18 +1540,18 @@ def fa_sam_parse(args, ref, file): # process SAM files
                                     i_AAs = fasta_snp_call(insertion, ref).split('(')[1].strip(')')
                                 AA_pos = ((Pos-1)//3)+1
                                 iabund = ins_nt_dict[Pos][insertion]/total
-                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t{AA_pos}\t-\t\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
-                                ntcall_lines['line'][iPos] += f"\t{iabund:.3f}"
+                                ntcall_lines['line'][insert_position] = f"{Pos}\t-\t{AA_pos}\t-\t\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
+                                ntcall_lines['line'][insert_position] += f"\t{iabund:.3f}"
                                 if 'fs' in i_AAs:
-                                    ntcall_lines['line'][iPos] += f"\t\tfs"
+                                    ntcall_lines['line'][insert_position] += f"\t\tfs"
                                 else:
                                     split_AAs = i_AAs.split(str(AA_pos))
                                     if split_AAs[0]:
-                                        ntcall_lines['line'][iPos] += f"\t\t{split_AAs[0]}->{split_AAs[1][:-1]}"
+                                        ntcall_lines['line'][insert_position] += f"\t\t{split_AAs[0]}->{split_AAs[1][:-1]}"
                                     else:
-                                        ntcall_lines['line'][iPos] += f"\t\t{split_AAs[1]}"
+                                        ntcall_lines['line'][insert_position] += f"\t\t{split_AAs[1]}"
                                 if ( ins_nt_dict[Pos][insertion] >= args.min_count) and (iabund >= args.min_samp_abund):
-                                    ntcall_lines['variant'][iPos] = 1
+                                    ntcall_lines['variant'][insert_position] = 1
                                 i += 1
 
                         Pos_calls = {}
@@ -1663,7 +1626,7 @@ def fa_sam_parse(args, ref, file): # process SAM files
 
                 for Pos in sorted_Pos:
                     try:
-                        total = coverage[Pos] # sum(nt_call_dict_dict[Pos].values())
+                        total = coverage[Pos]
                     except:
                         total = 0
                         print(f"Coverage of position {Pos} not found")
@@ -1677,15 +1640,15 @@ def fa_sam_parse(args, ref, file): # process SAM files
                         else:
                             i = 1
                             for insertion in ins_nt_dict[Pos]:
-                                iPos = Pos+(i/1000)
+                                insert_position = Pos+(i/1000)
                                 i_nts = insertion.split('insert')[1]
                                 AA_pos = ((Pos-1)//3)+1
                                 iabund = ins_nt_dict[Pos][insertion]/total
-                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
-                                ntcall_lines['line'][iPos] += f"\t{iabund:.3f}"
+                                ntcall_lines['line'][insert_position] = f"{Pos}\t-\t\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
+                                ntcall_lines['line'][insert_position] += f"\t{iabund:.3f}"
 
                                 if ( ins_nt_dict[Pos][insertion] >= args.min_count) and (iabund >= args.min_samp_abund):
-                                    ntcall_lines['variant'][iPos] = 1
+                                    ntcall_lines['variant'][insert_position] = 1
                                 i += 1
 
                         Pos_calls = {}
@@ -1721,8 +1684,7 @@ def fa_sam_parse(args, ref, file): # process SAM files
             ntcall_fh.close()
             if args.ntvar == 1:
                 ntcallv_fh.close()
-            # END NT CALL OUT
-            # print(f"End nt call out for {samp}")
+
     print(f'End {file} main output')
 
 def gb_sam_parse(args, ref, file):
@@ -1754,7 +1716,7 @@ def gb_sam_parse(args, ref, file):
             for SNP_sequence in col_reads:
                 if 'Reference' == SNP_sequence:
                     pass
-                elif args.AAcodonasMNP == 1:
+                elif args.AAcodonasMNP == 1: # similar to fasta ref processing, but performs aa checks for each reading frame
                     try:
                         col_reads[SNP_sequence]['AA_sequence']
                     except:
@@ -1963,8 +1925,6 @@ def gb_sam_parse(args, ref, file):
                     except:
                         mutations =[]
                         for mut in SNP_sequence.split(' '):
-                            if mut.isnumeric():
-                                newmut = mut
                             try:
                                 newmut = nt_to_AA_dict[mut]
                             except:
@@ -1983,6 +1943,7 @@ def gb_sam_parse(args, ref, file):
         elif args.indel == 1:
             indel_dict = get_nt_indels(col_reads)
 
+        # converts nt based variant lines into AA based lines
         if args.AAcentered == 1 and args.AAreport == 1:
             for SNP_sequence in col_reads:
                 aa_seq = {}
@@ -1992,9 +1953,7 @@ def gb_sam_parse(args, ref, file):
                     pass
                 else:
                     for mut in col_reads[SNP_sequence]['AA_sequence'].split(' '):
-                        if mut.isnumeric():
-                            aa_seq[mut] = [int(mut)]
-                        elif '|' in mut:
+                        if '|' in mut:
                             split_mut = mut.split('|')
 
                             for orfmut in split_mut[1:]:
@@ -2051,7 +2010,7 @@ def gb_sam_parse(args, ref, file):
         if args.covar == 1:
             print_covars(samp, sam_read_count, col_reads, coverage, args, aa_genome_pos_dict)
 
-        if args.nt_call == 1: # out put nt calls
+        if args.nt_call == 1:
             ntcall_lines = {'line' : {},
                             'variant' : {}
                             }
@@ -2106,7 +2065,7 @@ def gb_sam_parse(args, ref, file):
                         else:
                             i = 1
                             for insertion in ins_nt_dict[Pos]:
-                                iPos = Pos+(i/1000)
+                                insert_position = Pos+(i/1000)
                                 i_nts = insertion.split('insert')[1]
                                 try:
                                     i_AAs = '|'.join(gb_snp_call(insertion, ref).split('|')[1:])
@@ -2114,9 +2073,9 @@ def gb_sam_parse(args, ref, file):
                                     i_AAs = ''
                                 AA_pos = ", ".join(orfAAreports)
                                 iabund = ins_nt_dict[Pos][insertion]/total
-                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t{AA_pos}\t\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
-                                ntcall_lines['line'][iPos] += f"\t{iabund:.3f}\t\t{i_AAs}"
-                                ntcall_lines['line'][iPos] += "\n"
+                                ntcall_lines['line'][insert_position] = f"{Pos}\t-\t{AA_pos}\t\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
+                                ntcall_lines['line'][insert_position] += f"\t{iabund:.3f}\t\t{i_AAs}"
+                                ntcall_lines['line'][insert_position] += "\n"
                                 i += 1
 
                         Pos_calls = {}
@@ -2288,12 +2247,12 @@ def gb_sam_parse(args, ref, file):
                         else:
                             i = 1
                             for insertion in ins_nt_dict[Pos]:
-                                iPos = Pos+(i/1000)
+                                insert_position = Pos+(i/1000)
                                 i_nts = insertion.split('insert')[1]
                                 iabund = ins_nt_dict[Pos][insertion]/total
-                                ntcall_lines['line'][iPos] = f"{Pos}\t-\t\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
-                                ntcall_lines['line'][iPos] += f"\t{iabund:.3f}"
-                                ntcall_lines['line'][iPos] += "\n"
+                                ntcall_lines['line'][insert_position] = f"{Pos}\t-\t\t\t\t\t\t\t{total}\t{i_nts}\t{ins_nt_dict[Pos][insertion]}"
+                                ntcall_lines['line'][insert_position] += f"\t{iabund:.3f}"
+                                ntcall_lines['line'][insert_position] += "\n"
                                 i += 1
 
                         Pos_calls = {}
@@ -2324,12 +2283,10 @@ def gb_sam_parse(args, ref, file):
             ntcall_fh.close()
             if args.ntvar == 1:
                 ntcallv_fh.close()
-            # END NT CALL OUT
-            # print(f"End nt call out for {samp}")
 
     print(f'End {file} main output')
 
-def covar_deconv(args, samp, covariance_dict, sequence_dict): # covar deconvolution process
+def covar_deconv(args, samp, covariance_dict, sequence_dict):
     """
     Called to perform chimera removal based on the covars output and print the covar deconv output
     Parameters:
@@ -2337,33 +2294,39 @@ def covar_deconv(args, samp, covariance_dict, sequence_dict): # covar deconvolut
     samp - sam sample name
     covariance_dict - dict of covar lines
     sequence_dict - dict of unique seq lines
-    
+
     Functionality:
-    The first step determines if a sequence is likely to be a true or chimeric sequence by obtaining the ratio of the frequency of a given covariant sequence relative to an expected abundance of that covariant sequence assuming random recombination of its individual polymorphisms. The expected abundance is obtained by multiplying the abundances of each individual polymorphism that is present in that covariant sequence. For instance, in a sample where ‘1501T(N501Y)’ has an abundance of 0.32 and ‘1709A(A570D)’ has an abundance of 0.35, the expected abundance of the covariant ‘1501T(N501Y) 1709A(A570D)’ would be 0.112 [0.32 × 0.35]. If the ratio of the observed abundance to the expected abundance is equal to or greater than 1 (beta), that covariant passes the check and is sent to the second step. Any sequence that has an abundance of 0.3 or greater is automatically passed. If such a sequence has an observed/expected ratio less than 1, it will be assigned a ratio of 1. The second step processes the passed sequences in order of greatest observed/expected ratio to least. If multiple sequences have the same ratio, they are processed in order of greatest to least distance from the reference. Sequences that automatically pass the first step are processed after the other sequences in order of least abundant to greatest. Sequences are assigned a new occurrence count based on their constituent individual polymorphisms. For the sequence being processed, the count for the least abundant individual polymorphism is assigned to the sequence and constituent polymorphisms making up the sequence have their count reduced by the amount of the least abundant polymorphism. This reduction means the individual polymorphism that had the least counts is assigned 0 counts, so any sequence not yet processed in which that polymorphism is present is functionally removed. This process is repeated until all sequences have been reassessed or removed.
-    
+    A sequence is first determined to likely be a true or chimeric sequence.  The ratio of the frequency of a given covariant sequence
+    relative to the product of the abundances of each individual polymorphism that is present in that covariant sequence is calculated.
+    If the ratio of the sequence abundance to the product is equal to or greater than 1 (beta), that covariant passes the check.
+    Any sequence that has an abundance of 0.3 or greater is automatically passed.  Then the passed sequences, in order of greatest
+    observed/expected ratio to least, are assigned a new occurrence count based on their constituent individual polymorphisms. The count
+    of the least abundant individual polymorphism is assigned to the sequence and constituent polymorphisms making up the sequence have
+    their count reduced by the amount of the least abundant polymorphism. Any sequence not yet processed in which that polymorphism is
+    present is removed. This process is repeated until all sequences have been reassessed or removed.
+
     Returns nothing
     """
 
     passedseqs = {}
     preservedseqs = {}
-    covardict = covariance_dict
-    seqdict = sequence_dict
-    for seq in seqdict: # pass check for actual : expected abundance
+    covar_dict = covariance_dict
+    for seq in sequence_dict: # pass check for actual : expected abundance
         if seq != 'total' and seq != 'singles':
 
             splitseq = seq.split(' ')
             abund = 1
             for sing in splitseq:
                 try:
-                    abund = abund * (covardict[sing] / covardict['total'])
+                    abund = abund * (covar_dict[sing] / covar_dict['total'])
                 except:
-                    abund = abund * (seqdict[seq] / seqdict['total'])
+                    abund = abund * (sequence_dict[seq] / sequence_dict['total'])
 
             try:
-                covarabund = covardict[seq]/covardict['total']
+                covarabund = covar_dict[seq]/covar_dict['total']
             except:
-                covarabund = seqdict[seq]/seqdict['total']
-                covardict[seq] = seqdict[seq]
+                covarabund = sequence_dict[seq]/sequence_dict['total']
+                covar_dict[seq] = sequence_dict[seq]
 
             if covarabund >= args.autopass:
                 preservedseqs[seq] = max(1, args.beta, (covarabund / abund))
@@ -2373,25 +2336,25 @@ def covar_deconv(args, samp, covariance_dict, sequence_dict): # covar deconvolut
                 passedseqs[seq] = max(1, args.beta)
 
     if args.min_samp_abund < 1:
-        min_count = args.min_samp_abund * covardict['total']
+        min_count = args.min_samp_abund * covar_dict['total']
     else:
         min_count = args.min_samp_abund
 
     if args.pass_out == 1: # write passed covars to file if enabled
         fh_pass = open(samp+"_covar_pass.tsv", "w")
-        fh_pass.write(f"{samp}({covardict['total']})\nSequences\tCount\tAbundance\tPass Ratio\n")
+        fh_pass.write(f"{samp}({covar_dict['total']})\nSequences\tCount\tAbundance\tPass Ratio\n")
         for seq in preservedseqs:
-            if covardict[seq] >= min_count:
-                fh_pass.write(f"{seq}\t{covardict[seq]}\t{(covardict[seq]/covardict['total']):.3f}\t{preservedseqs[seq]}*\n")
+            if covar_dict[seq] >= min_count:
+                fh_pass.write(f"{seq}\t{covar_dict[seq]}\t{(covar_dict[seq]/covar_dict['total']):.3f}\t{preservedseqs[seq]}*\n")
         for seq in passedseqs:
-            if covardict[seq] >= min_count:
-                fh_pass.write(f"{seq}\t{covardict[seq]}\t{(covardict[seq]/covardict['total']):.3f}\t{passedseqs[seq]}\n")
+            if covar_dict[seq] >= min_count:
+                fh_pass.write(f"{seq}\t{covar_dict[seq]}\t{(covar_dict[seq]/covar_dict['total']):.3f}\t{passedseqs[seq]}\n")
         fh_pass.close()
 
     # sort passed covars
     lensortedpassed = sorted(passedseqs, key = lambda key : len(key.split(' ')), reverse=True)
     ratiolensortedpassed = sorted(lensortedpassed, key = lambda key : passedseqs[key], reverse = True)
-    sortedsingles = sorted(covardict['singles'], key = covardict['singles'].__getitem__)
+    sortedsingles = sorted(covar_dict['singles'], key = covar_dict['singles'].__getitem__)
     deconved = {}
     for seq in ratiolensortedpassed: # reassign counts
         singles = seq.split(' ')
@@ -2399,19 +2362,19 @@ def covar_deconv(args, samp, covariance_dict, sequence_dict): # covar deconvolut
         rem_count = 0
         for sing in sortedsingles:
             if sing in singles:
-                if covardict['singles'][sing] > 0:
+                if covar_dict['singles'][sing] > 0:
                     if first == 0:
                         first = 1
-                        rem_count = covardict['singles'][sing]
-                        covardict['singles'][sing] = 0
+                        rem_count = covar_dict['singles'][sing]
+                        covar_dict['singles'][sing] = 0
                         deconved[seq] = rem_count
                     else:
-                        covardict['singles'][sing] = covardict['singles'][sing] - rem_count
+                        covar_dict['singles'][sing] = covar_dict['singles'][sing] - rem_count
                 else:
                     break
-        sortedsingles = sorted(covardict['singles'], key = covardict['singles'].__getitem__)
+        sortedsingles = sorted(covar_dict['singles'], key = covar_dict['singles'].__getitem__)
 
-    sortedpreserved = sorted(preservedseqs, key = lambda key : covardict[key])
+    sortedpreserved = sorted(preservedseqs, key = lambda key : covar_dict[key])
 
     for seq in sortedpreserved:
         singles = seq.split(' ')
@@ -2419,22 +2382,22 @@ def covar_deconv(args, samp, covariance_dict, sequence_dict): # covar deconvolut
         rem_count = 0
         for sing in sortedsingles:
             if sing in singles:
-                if covardict['singles'][sing] > 0:
+                if covar_dict['singles'][sing] > 0:
                     if first == 0:
                         first = 1
-                        rem_count = covardict['singles'][sing]
-                        covardict['singles'][sing] = 0
+                        rem_count = covar_dict['singles'][sing]
+                        covar_dict['singles'][sing] = 0
                         deconved[seq] = rem_count
                     else:
-                        covardict['singles'][sing] = covardict['singles'][sing] - rem_count
+                        covar_dict['singles'][sing] = covar_dict['singles'][sing] - rem_count
                 else:
                     break
-        sortedsingles = sorted(covardict['singles'], key = covardict['singles'].__getitem__)
+        sortedsingles = sorted(covar_dict['singles'], key = covar_dict['singles'].__getitem__)
 
 
     newtotal = sum(deconved.values())
     fh_deconv = open(samp+"_covar_deconv.tsv", "w")
-    fh_deconv.write(f"{samp}({covardict['total']}) | ({newtotal})\nSequences\tCount\tAbundance\n")
+    fh_deconv.write(f"{samp}({covar_dict['total']}) | ({newtotal})\nSequences\tCount\tAbundance\n")
     sorted_deconved = sorted(deconved, key = deconved.__getitem__, reverse = True)
     for seq in sorted_deconved: # write deconv
         if deconved[seq] >= min_count:
@@ -2445,12 +2408,23 @@ def covar_deconv(args, samp, covariance_dict, sequence_dict): # covar deconvolut
 
     return()
 
-def dechim(args, seqs): # processing sequence dictionary to remove chimeras
+def dechim(args, seqs):
     """
-    Called to
+    Called to perform chimera removal based on the unique seqs output
     Parameters:
+    args - argument values
+    seqs - dict of unique seq lines
     Functionality:
-    Returns
+    The individual unique sequences, starting with the lowest abundance, are broken up into all possible dimeric halves. Each pair
+    is then compared to all the other sequences to detect potential parents. A sequence is flagged as a potential parent if its
+    abundance is greater than or equal to the abundance of the potential chimera multiplied by foldab and there is at least one
+    other sequence that would be a matched parent to the complimentary dimeric half. When a pair of dimeric halves have potential
+    parents, the abundances of parent pairs are multiplied. The products from each potential parent pairings are summed as an
+    expected abundance value and compared to the observed abundance of the potential chimera. If the abundance of the potential
+    chimera is less than that of the expected value multiplied by alpha, that sequence is flagged as a chimera and removed. The
+    counts attributed to the flagged chimeric sequence are then redistributed to the parent sequences based on the relative expected
+    contribution to recombination.
+    Returns new sequence dict without found chimeras
     """
 
 
@@ -2528,27 +2502,28 @@ def dechim(args, seqs): # processing sequence dictionary to remove chimeras
                     seqs[parent_pairs[i][0]] += counts_to_redist
                     seqs[parent_pairs[i][1]] += counts_to_redist
 
-
-
     for chim in chimeras: # remove chimeras
         del seqs[chim]
 
     total = sum(seqs.values())
 
-
-    # total = sum(seqs.values)
     seqs['total'] = total
 
     return(seqs)
 
-def chim_rm(args, samp, seqs): # chimera removed process
+def chim_rm(args, samp, sequences):
     """
-    Called to
+    Called to reiterate the chim_rm chimera removal process based on unique seqs and print the chim_rm output
     Parameters:
-    Functionality:The first algorithm, chimera removed (chim rm), goes through the individual unique sequences, starting with the lowest abundance, to determine if the sequences are chimeric. Figure 3 shows a simplified example of how the determination is made on the lowest abundant sequence of an example unique sequence output (Supplementary 5). For this step, the sequence being considered as a potential chimera is broken up into all possible dimeric halves. Each pair is then compared to all the other sequences to detect potential parents. A sequence is flagged as a potential parent if its abundance is greater than or equal to the abundance of the potential chimera multiplied by 1.8 (foldab) and there is at least one other sequence that would be a matched parent to the complimentary dimeric half. When a pair of dimeric halves have potential parents, the abundances of parent pairs are multiplied. The products from each potential parent pairings are summed as an expected abundance value and compared to the observed abundance of the potential chimera. If the abundance of the potential chimera is less than that of the expected value multiplied by 1.2 (alpha), that sequence is flagged as a chimera and removed. The counts attributed to the flagged chimeric sequence are then redistributed to the parent sequences based on the relative expected contribution to recombination. Once this process has been performed for all the sequences, it is repeated until no more sequences are flagged as chimeric or 100 chimera removal cycles have completed. 
-    Returns
+    args - argument values
+    samp - sample name from sam file
+    sequencess - dict of unique sequences
+    Functionality:
+    Looped calling of chimera removal until no more chimeras are found or limit hit.  Results are then printed
+    Returns nothing
     """
 
+    seqs = sequences
     pre_len = len(seqs)
     inf_loop_shield = 0
     while True: # send sequences for chimera removal while chimeras are still found
@@ -2577,35 +2552,39 @@ def chim_rm(args, samp, seqs): # chimera removed process
             fh_dechime.write(f"{seq}\t{round(seqs[seq])}\t{abund:.3f}\n")
 
     fh_dechime.close()
-    print(f"End chim_rm out for {samp}") # END CHIM RM DECONV OUT
+    print(f"End chim_rm out for {samp}")
     return()
 
 def chim_process(args, samp):
     """
-    Called to
+    Called to collect sequences from covar and unique seq files, then pass those to the chimera removal functions
     Parameters:
+    args - argument values
+    samp - samples name from sam file
     Functionality:
-    Returns
+    Tries to open files based on based sample name.  If successful, calls the specific chimera removal
+    functions
+    Returns nothing
     """
+    in_seqs = {}
+    try:
+        seqin_file = open(samp+'_unique_seqs.tsv', 'r')
+        for line in seqin_file:
+            lineparts = line.strip("\n\r").split("\t")
+            try:
+                lineparts[1]
+            except:
+                in_seqs = {'total' : int(lineparts[0].split("(")[1][0:-1])}
+            else:
+                if lineparts[1] != 'Count':
+                    if float(lineparts[2]) >= args.chim_in_abund:
+                        in_seqs[lineparts[0]] = float(lineparts[1])
+        seqin_file.close()
+    except:
+        print(f"Reading of {samp}_unique_seqs.tsv failed")
+
     if args.deconv == 1:
         in_covars = {}
-        in_seqs = {}
-        try:
-            seqin_file = open(samp+'_unique_seqs.tsv', 'r')
-            for line in seqin_file:
-                lineparts = line.strip("\n\r").split("\t")
-                try:
-                    lineparts[1]
-                except:
-                    in_seqs = {'total' : int(lineparts[0].split("(")[1][0:-1])}
-                else:
-                    if lineparts[1] != 'Count':
-                        if float(lineparts[2]) >= args.chim_in_abund:
-                            in_seqs[lineparts[0]] = float(lineparts[1])
-            seqin_file.close()
-        except:
-            print(f"Reading of {samp}_unique_seqs.tsv failed")
-
         try:
             covin_file = open(samp+'_covars.tsv', 'r')
             for line in covin_file:
@@ -2628,35 +2607,20 @@ def chim_process(args, samp):
         except:
             print(f"Reading of {samp}_covars.tsv failed")
 
-        if args.chim_rm == 1:
-            chim_rm(args, samp, in_seqs)
-
-    elif args.chim_rm == 1:
-            in_covars = {}
-            in_seqs = {}
-            try:
-                seqin_file = open(samp+'_unique_seqs.tsv', 'r')
-                for line in seqin_file:
-                    lineparts = line.strip("\n\r").split("\t")
-                    try:
-                        lineparts[1]
-                    except:
-                        in_seqs = {'total' : int(lineparts[0].split("(")[1][0:-1])}
-                    else:
-                        if lineparts[1] != 'Count':
-                            if float(lineparts[2]) >= args.chim_in_abund:
-                                in_seqs[lineparts[0]] = float(lineparts[1])
-                seqin_file.close()
-                chim_rm(args, samp, in_seqs)
-            except:
-                print(f"Failed to Process {samp}_unique_seqs.tsv")
+    if args.chim_rm == 1:
+        chim_rm(args, samp, in_seqs)
 
 def collect_lines(dict_dict, all_dict, file, args):
     """
-    Called to
+    Called to collect the lines of a file
     Parameters:
+    dict_dict - dict of dict of lines from files
+    all_dict - dict of all unique sequences from files
+    file - name of the file to collect from
+    args - argument values
     Functionality:
-    Returns
+    Parses through the file to collect sequences and info
+    Returns updated dicts
     """
 
     sample_line = ''
@@ -2666,26 +2630,29 @@ def collect_lines(dict_dict, all_dict, file, args):
         print("can't open "+file)
     else:
         for line in samp:
-            splitline = line.strip("\n\r").split("\t")
+            split_line = line.strip("\n\r").split("\t")
             try:
-                splitline[1]
+                split_line[1]
             except:
-                sample_line = splitline[0]
+                sample_line = split_line[0]
                 dict_dict[sample_line] = {}
 
             else:
-                if not splitline[1] == 'Count':
-                    if float(splitline[2]) >= args.min_col_abund:
-                        dict_dict[sample_line][splitline[0]] = [splitline[1], splitline[2]]
-                        all_dict[splitline[0]] = 1
+                if not split_line[1] == 'Count':
+                    if float(split_line[2]) >= args.min_col_abund:
+                        dict_dict[sample_line][split_line[0]] = [split_line[1], split_line[2]]
+                        all_dict[split_line[0]] = 1
         samp.close()
         return(dict_dict, all_dict)
 
 def collection(args):
     """
-    Called to
+    Called to perform collection logic and printing
     Parameters:
+    args - argument vlaues
     Functionality:
+    Looks through directory for sample files to collect sequence info from and calls function to collect info.
+    Then prints collected info to new files.
     Returns
     """
 
@@ -2752,21 +2719,20 @@ def collection(args):
         else:
             print(f"No {dicts[0]} files found")
 
-
 def main():
-
+    """
+    Main functional logic
+    Calls functions to get argument values, then as relevant, get reference, process sam files, perform chimera removal and collect sample's
+    """
     args = arg_parser() # getting command line arguments
-
-    #if args.sams == 1:
 
     if args.ref:
         ref = get_ref(args) # get the reference ID and sequence from the FASTA file
-        # args.ref.close()
         if ref[1] == '':
             print('Reference not recognized as a Fasta or Genebank format, skipping SAM parsing')
         else:
 
-            # collect SAM files to process, either from the command line or the working directory
+            # collect SAM files to process, either from the arguments or the working directory
             SAMs = []
             try:
                 args.Sam_files[0]
@@ -2798,7 +2764,7 @@ def main():
     # Begin chimera removal if enabled
     if args.chim_rm == 1 or args.deconv == 1:
         for file in os.listdir(os.getcwd()):
-            if file.endswith('_seqs.tsv'): # get unique sequences for chimera removal
+            if file.endswith('_seqs.tsv'): # get unique sequence files for chimera removal
                 seq_files.append(file[0:-16])
         with Pool(processes=args.mp) as pool:
             pool.starmap(chim_process, zip(itertools.repeat(args), seq_files))
