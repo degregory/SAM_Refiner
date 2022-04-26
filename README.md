@@ -13,7 +13,7 @@ $ SAM_Refiner -h
 ```
 or for the current, possibly unstable version
 ```bash
-$ wget https://raw.githubusercontent.com/degregory/SAM_Refiner/main/SAM_Refiner.py
+$ curl https://raw.githubusercontent.com/degregory/SAM_Refiner/main/SAM_Refiner.py -o SAM_Refiner.py
 $ python3 /path/to/SAM_Refiner.py -h
 ```
 
