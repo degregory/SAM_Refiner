@@ -24,14 +24,14 @@ $ python3 /path/to/SAM_Refiner.py -h
 $ python SAM_Refiner -r reference.fasta
 $ python SAM_Refiner -r reference.gb --wgs 1
 ```
-For information on all options use:
+For information on all current options use:
 ```bash
 $ python SAM_Refiner -h
 ```
 
 ## Introduction
 
-SAM Refiner processes SAM formatted files generated from sequencing mapping programs such as [Bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) or [MiniMap2](https://github.com/lh3/minimap2) to collect variant information relative to a reference sequence and remove chimeric sequences.  For details on the processing and outputs, please refer to [the manuscript][link].  If you use SAM Refiner for any published work, please cite [Gregory, DA. et al.][link].
+SAM Refiner processes SAM formatted files generated from sequencing mapping programs such as [Bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) or [MiniMap2](https://github.com/lh3/minimap2) to collect variant information relative to a reference sequence and remove chimeric sequences.  For details on the original processing and outputs, please refer to [the manuscript][link].  If you use SAM Refiner for any published work, please cite [Gregory, DA. et al.][link].
 
 ## Significant Updates
 2022-04-19
