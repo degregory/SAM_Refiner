@@ -1853,6 +1853,7 @@ def gb_sam_parse(args, ref, file):
                                             endmod = orfendpos % 3
                                             wtorfstartpos = orfstartpos
                                             wtorfendpos = orfendpos
+                                            rf_end_del = 0
                                             if startmod == 2:
                                                 wtorfstartpos = orfstartpos-1
                                                 mutntseq = ref[3][orf]['nts'][orfstartpos-2] + mutntseq
@@ -1861,10 +1862,16 @@ def gb_sam_parse(args, ref, file):
                                                 mutntseq = ref[3][orf]['nts'][orfstartpos-3:orfstartpos-1] + mutntseq
                                             if endmod == 2:
                                                 wtorfendpos = orfendpos+1
-                                                mutntseq += ref[3][orf]['nts'][orfendpos]
+                                                try:
+                                                    mutntseq += ref[3][orf]['nts'][orfendpos]
+                                                except:
+                                                    rf_end_del = 1
                                             elif endmod == 1:
-                                                wtorfendpos = orfendpos-2
-                                                mutntseq += ref[3][orf]['nts'][orfendpos:orfendpos+2]
+                                                wtorfendpos = orfendpos+2
+                                                try:
+                                                    mutntseq += ref[3][orf]['nts'][orfendpos:orfendpos+2]
+                                                except:
+                                                    rf_end_del = 1
                                             wtntseq = ref[3][orf]['nts'][wtorfstartpos-1:wtorfendpos]
                                             wtAAseq = ref[3][orf]['AAs'][startcodonpos-1:endcodonpos]
                                             mutAAseq = ''
@@ -1878,6 +1885,10 @@ def gb_sam_parse(args, ref, file):
                                             elif len(mutAAseq) > len(wtAAseq):
                                                 mutAAseq += 'insert'
                                                 mutntseq += 'insert'
+                                            if rf_end_del == 1:
+                                                mutAAseq += 'term/splice_distrupted'
+                                                mutntseq += 'term/splice_distrupted'
+                                            
                                             for curPM in entry:
                                                 if startcodonpos == endcodonpos:
                                                     newmut = f"({orf}:{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}{mutAAseq}))"
