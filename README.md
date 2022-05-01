@@ -18,10 +18,15 @@ $ python3 /path/to/SAM_Refiner.py -h
 ```
 
 
-### Default Usage
+### Default Usages
 
 ```bash
 $ python SAM_Refiner -r reference.fasta
+$ python SAM_Refiner -r reference.gb --wgs 1
+```
+For information on all options use:
+```bash
+$ python SAM_Refiner -h
 ```
 
 ## Introduction
@@ -62,9 +67,6 @@ Added handling of non canonical NT calls.  Anything other than ATCG- will not be
 Changed default --max_dist to 40
 
 
-
-
-## In Progress
 Currently working on option to use gb format file for reference.  Implemented, but not extensively tested.  Simply use -r to point to a gb file.  Likely won't work on files without CDS entries.
 
 Mode for whole genome sequencing operable.  Enabled with --wgs 1, but not yet extensively tested.

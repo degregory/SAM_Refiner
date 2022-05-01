@@ -38,7 +38,7 @@ def arg_parser():
         '-r', '-reference',
         type=argparse.FileType('r'),
         dest='ref',
-        help='reference fasta'
+        help='reference fasta or genbank file.  Only chimera removal and collections will be performed if omitted.'
     )
     parser.add_argument(
         '-S', '--Sam_files',
