@@ -3,13 +3,12 @@
 # Writen by Devon Gregory with assistance from Christopher Bottoms
 # University of Missouri
 # Distributed under GNU GENERAL PUBLIC LICENSE v3
-# last editted on 202204025
+# last editted on 20220501
 
 import os
 import sys
 import argparse
 import itertools
-import time
 from multiprocessing import Process, Pool
 
 """

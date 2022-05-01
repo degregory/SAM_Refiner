@@ -4,9 +4,9 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(  name='SAM_Refiner',
-        version='1.0',
+        version='1.4',
         py_modules=['SAM_Refiner'],
-        description='A program for gathering variant information from a SAM formated files',
+        description='A program for gathering variant information from mapped reads in a SAM formated files',
         long_description=long_description,
         long_description_content_type="text/markdown",
         author='Devon A. Gregory',
