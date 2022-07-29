@@ -1400,7 +1400,7 @@ def fa_sam_parse(args, ref, file):
                                                     if 'insert' in entry[i-1][0]:
                                                         mutntseq += ref[1][entry[i-1][1]-1:entry[i][1]-1]
                                                     elif 'del' in entry[i-1][0]:
-                                                        mutntseq += ref[1][entry[i-1][1]+len(entry[i-1][0].split('-')[0].strip('0123456789')):entry[i][1]-1]
+                                                        mutntseq += ref[1][entry[i-1][1]+len(entry[i-1][0].split('-')[0].strip('0123456789'))-1:entry[i][1]-1]
                                                     else:
                                                         mutntseq += ref[1][entry[i-1][1]:entry[i][1]-1]
                                             if 'insert' in curPM:
@@ -1425,7 +1425,7 @@ def fa_sam_parse(args, ref, file):
                                             wtorfendpos = orfendpos+1
                                             mutntseq += ref[1][orfendpos]
                                         elif endmod == 1:
-                                            wtorfendpos = orfendpos-2
+                                            wtorfendpos = orfendpos+2
                                             mutntseq += ref[1][orfendpos:orfendpos+2]
                                         wtntseq = ref[1][wtorfstartpos-1:wtorfendpos]
                                         wtAAseq = ref[3][1][startcodonpos-1:endcodonpos]
@@ -1837,7 +1837,7 @@ def gb_sam_parse(args, ref, file):
                                                         if 'insert' in entry[i-1][0]:
                                                             mutntseq += ref[3][orf]['nts'][entry[i-1][1]-1:entry[i][1]-1]
                                                         elif 'del' in entry[i-1][0]:
-                                                            mutntseq += ref[3][orf]['nts'][entry[i-1][1]+len(entry[i-1][0].split('-')[0].strip('0123456789')):entry[i][1]-1]
+                                                            mutntseq += ref[3][orf]['nts'][entry[i-1][1]+len(entry[i-1][0].split('-')[0].strip('0123456789'))-1:entry[i][1]-1]
                                                         else:
                                                             mutntseq += ref[3][orf]['nts'][entry[i-1][1]:entry[i][1]-1]
                                                 if 'insert' in curPM:
