@@ -1144,17 +1144,16 @@ def print_covars(samp, sam_read_count, col_reads, coverage, args, aa_centered):
         ntsingles = []
         AAsingles = []
 
-        if not sequence == 'Reference':
-            try:
-                ntsingles = col_reads[sequence]['AA_sequence'].split(' ')
-            except:
-                ntsingles = sequence.split(' ')
-            if aa_centered:
-                AAsingles = col_reads[sequence]['AA_centered'].split(' ')
-            sequence_count = 0
-            for value in col_reads[sequence].values():
-                if isinstance(value, int):
-                    sequence_count += value
+        try:
+            ntsingles = col_reads[sequence]['AA_sequence'].split(' ')
+        except:
+            ntsingles = sequence.split(' ')
+        if aa_centered:
+            AAsingles = col_reads[sequence]['AA_centered'].split(' ')
+        sequence_count = 0
+        for value in col_reads[sequence].values():
+            if isinstance(value, int):
+                sequence_count += value
 
         if args.wgs == 1 and args.covar_tile_coverage == 1:
             for start_end in col_reads[SNP_sequence]:
