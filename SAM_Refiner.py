@@ -1144,6 +1144,8 @@ def print_covars(samp, sam_read_count, col_reads, coverage, args, aa_centered):
         ntsingles = []
         AAsingles = []
 
+        if args.wgs == 1 and sequence == "Reference":
+            continue
         try:
             ntsingles = col_reads[sequence]['AA_sequence'].split(' ')
         except:
