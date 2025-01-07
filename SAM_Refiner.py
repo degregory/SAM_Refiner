@@ -393,7 +393,7 @@ def get_ref(args):
                     elif "product=" in line:
                         product = line.split("=")[1].strip('"\n\r')
 
-                    elif "translation" in line:
+                    elif "/translation=" in line:
                         try:
                             gene
                         except:
@@ -1301,6 +1301,7 @@ def fa_sam_parse(args, ref, file):
                     try:
                         col_reads[SNP_sequence]['AA_sequence']
                     except:
+                        print(SNP_sequence)
                         MNPs = []
                         curMNP = ''
                         last_codon = -1
@@ -1313,14 +1314,15 @@ def fa_sam_parse(args, ref, file):
 
                             startcodon = (((startPos)-1)//3)+1
                             endcodon = ((endPos-1)//3)+1
+                            
+                            mutshift = 0
+                            if 'insert' in mut:
+                                mutshift += len(mut.split('(')[0].split('insert')[1])
+                            else:
+                                mutshift -= len(mut.split('-')[0].strip('0123456789'))
+                            
                             if curMNP:
-                                if 'fs' in mut:
-                                    mutshift = 0
-                                    if 'insert' in mut:
-                                        mutshift += len(mut.split('(')[0].split('insert')[1])
-                                    else:
-                                        mutshift -= len(mut.split('-')[0].strip('0123456789'))
-
+                                if not mutshift % 3 == 0:
                                     if (fshift % 3) == 0:
                                         if startcodon == last_codon:
                                             curMNP.append([mut, startPos])
@@ -1335,6 +1337,7 @@ def fa_sam_parse(args, ref, file):
                                             curMNP.append([mut, startPos])
                                             fshift += mutshift
                                         else:
+                                            
                                             ## todo splitfsMNP() make process
                                             fsfreeMNP = []
                                             for SNP in curMNP:
@@ -1729,7 +1732,6 @@ def gb_sam_parse(args, ref, file):
                             MNPs = []
                             curMNP = ''
                             last_codon = -1
-
                             fshift = 0
                             for mut in SNP_sequence.split(' '):
                                 startPos = int(mut.split('-')[0].strip('ATCGN'))
@@ -1744,12 +1746,12 @@ def gb_sam_parse(args, ref, file):
                                         startcodon = (((orfstartpos)-1)//3)+1
                                         endcodon = ((orfendpos-1)//3)+1
                                         if curMNP:
-                                            if 'fs' in mut:
-                                                mutshift = 0
-                                                if 'insert' in mut:
-                                                    mutshift += len(mut.split('|')[0].split('insert')[1])
-                                                else:
-                                                    mutshift -= len(mut.split('-')[0].strip('0123456789'))
+                                            mutshift = 0
+                                            if 'insert' in mut:
+                                                mutshift += len(mut.split('|')[0].split('insert')[1])
+                                            else:
+                                                mutshift -= len(mut.split('-')[0].strip('0123456789'))
+                                            if not mutshift % 3 == 0:
 
                                                 if (fshift % 3) == 0:
                                                     if startcodon == last_codon:
@@ -2295,6 +2297,7 @@ def gb_sam_parse(args, ref, file):
             if args.ntvar == 1:
                 ntcallv_fh.close()
 
+    nt_call_dict_dict, ins_nt_dict, reads_list, col_reads, sam_read_count, coverage = (None, None, None, None, None, None)
     print(f'End {file} main output')
 
 def covar_deconv(args, samp, covariance_dict, sequence_dict):
@@ -2713,7 +2716,7 @@ def collection(args):
             collection_fh.write("\t")
             for sampline in dicts[1]:
                 collection_fh.write(sampline+"\t\t")
-            collection_fh.write("\nSequnces\t")
+            collection_fh.write("\nSequences\t")
             for sampline in dicts[1]:
                 collection_fh.write("Count\tAbundance\t")
             collection_fh.write("\n")
@@ -2764,8 +2767,11 @@ def main():
                 with Pool(processes=args.mp) as pool:
                     pool.starmap(fa_sam_parse, zip(itertools.repeat(args), itertools.repeat(ref), SAMs))
             elif ref[2] == 'gb':
-                with Pool(processes=args.mp) as pool:
-                    pool.starmap(gb_sam_parse, zip(itertools.repeat(args), itertools.repeat(ref), SAMs))
+                if len(SAMs) == 1:
+                    gb_sam_parse(args, ref, SAMs[0])
+                else:
+                    with Pool(processes=args.mp) as pool:
+                        pool.starmap(gb_sam_parse, zip(itertools.repeat(args), itertools.repeat(ref), SAMs))
             print(f"End Sam Parsing Output")
     else:
         print('No reference provided, skipping SAM parsing')
@@ -2783,6 +2789,7 @@ def main():
 # begin collection of sample outputs
     if args.collect == 1:
         collection(args)
+    exit()
 
 if __name__ == '__main__':
     main()
