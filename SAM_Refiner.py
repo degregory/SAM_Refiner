@@ -1356,10 +1356,7 @@ def fa_sam_parse(args, ref, file):
                                         curMNP.append([mut, startPos])
                                     else:
                                         if (fshift % 3) == 0:
-                                            # print(curMNP)
                                             MNPs.append(curMNP)
-                                            # print(MNPs)
-                                            # print(" ")
                                         else:
                                             ## splitfsMNP() make process
                                             fsfreeMNP = []
