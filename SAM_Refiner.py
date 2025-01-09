@@ -1301,7 +1301,6 @@ def fa_sam_parse(args, ref, file):
                     try:
                         col_reads[SNP_sequence]['AA_sequence']
                     except:
-                        print(SNP_sequence)
                         MNPs = []
                         curMNP = ''
                         last_codon = -1
@@ -1318,7 +1317,7 @@ def fa_sam_parse(args, ref, file):
                             mutshift = 0
                             if 'insert' in mut:
                                 mutshift += len(mut.split('(')[0].split('insert')[1])
-                            else:
+                            elif 'del' in mut:
                                 mutshift -= len(mut.split('-')[0].strip('0123456789'))
                             
                             if curMNP:
@@ -1357,7 +1356,10 @@ def fa_sam_parse(args, ref, file):
                                         curMNP.append([mut, startPos])
                                     else:
                                         if (fshift % 3) == 0:
+                                            # print(curMNP)
                                             MNPs.append(curMNP)
+                                            # print(MNPs)
+                                            # print(" ")
                                         else:
                                             ## splitfsMNP() make process
                                             fsfreeMNP = []
@@ -1749,7 +1751,7 @@ def gb_sam_parse(args, ref, file):
                                             mutshift = 0
                                             if 'insert' in mut:
                                                 mutshift += len(mut.split('|')[0].split('insert')[1])
-                                            else:
+                                            elif 'del' in mut:
                                                 mutshift -= len(mut.split('-')[0].strip('0123456789'))
                                             if not mutshift % 3 == 0:
 
