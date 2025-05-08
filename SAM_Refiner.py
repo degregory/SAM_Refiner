@@ -11,10 +11,10 @@ import argparse
 import itertools
 from multiprocessing import Process, Pool
 
+
 """
 To Do:
-codon correct indels
-Improve MNP processing for frameshifts
+replace none atcgn- nt calls function
 handle snp '-' deletion in MNP processing
 use all seq in fasta for references
 Clean up / polish / add comments
@@ -608,7 +608,7 @@ def sam_line_parser(args, ref, file):
                     cigar_num = CIGAR
                     for c in "MIDSH":
                         cigar_num = cigar_num.replace(c,"")
-                        
+
                     if not cigar_num.isnumeric():
                         print(f"Non-standard CIGAR string {CIGAR} {cigar_num} for line {sam_line_count}, ID {split_line[0]}. Skipping")
                         continue
@@ -1313,13 +1313,13 @@ def fa_sam_parse(args, ref, file):
 
                             startcodon = (((startPos)-1)//3)+1
                             endcodon = ((endPos-1)//3)+1
-                            
+
                             mutshift = 0
                             if 'insert' in mut:
                                 mutshift += len(mut.split('(')[0].split('insert')[1])
                             elif 'del' in mut:
                                 mutshift -= len(mut.split('-')[0].strip('0123456789'))
-                            
+
                             if curMNP:
                                 if not mutshift % 3 == 0:
                                     if (fshift % 3) == 0:
@@ -1336,7 +1336,7 @@ def fa_sam_parse(args, ref, file):
                                             curMNP.append([mut, startPos])
                                             fshift += mutshift
                                         else:
-                                            
+
                                             ## todo splitfsMNP() make process
                                             fsfreeMNP = []
                                             for SNP in curMNP:
@@ -1374,6 +1374,10 @@ def fa_sam_parse(args, ref, file):
                                         fshift = 0
                             else:
                                 curMNP = [[mut, startPos]]
+                                if 'insert' in mut:
+                                    fshift = len(mut.split('(')[0].split('insert')[1])
+                                elif 'del' in mut:
+                                    fshift = len(mut.split('-')[0].strip('0123456789'))
                             last_codon = endcodon
                         if curMNP:
                             MNPs.append(curMNP)
@@ -1393,25 +1397,24 @@ def fa_sam_parse(args, ref, file):
                                         mutntseq = ''
                                         orfstartpos = entry[0][1]
                                         orfendpos = entry[-1][1]
+
                                         if 'del' in entry[-1][0]:
                                             orfendpos += len(entry[-1][0].split('-')[0].strip('0123456789')) - 1
 
-                                        for i in range(0, len(entry)):
-                                            curPM = entry[i][0]
-                                            if i > 0:
-                                                if entry[i][1] > entry[i-1][1]:
-                                                    if 'insert' in entry[i-1][0]:
-                                                        mutntseq += ref[1][entry[i-1][1]-1:entry[i][1]-1]
-                                                    elif 'del' in entry[i-1][0]:
-                                                        mutntseq += ref[1][entry[i-1][1]+len(entry[i-1][0].split('-')[0].strip('0123456789'))-1:entry[i][1]-1]
-                                                    else:
-                                                        mutntseq += ref[1][entry[i-1][1]:entry[i][1]-1]
-                                            if 'insert' in curPM:
-                                                mutntseq += curPM.split('(')[0].split('insert')[1]
-                                            elif 'del' in curPM:
-                                                pass
+                                        cur_nts = {}
+                                        for i in range(orfstartpos, orfendpos+1):
+                                            cur_nts[i] = ref[1][i-1]
+                                        for curPM in entry:
+                                            if 'insert' in curPM[0]:
+                                                cur_nts[curPM[1]] = curPM[0].split('insert')[-1] + cur_nts[curPM[1]]
+                                            elif 'del' in curPM[0]:
+                                                for i in range(curPM[1], curPM[1]+len(curPM[0].split('-')[0].strip('0123456789'))):
+                                                    cur_nts[i] = ''
                                             else:
-                                                mutntseq += curPM[-1]
+                                                cur_nts[curPM[1]] = curPM[0][-1]
+                                        for pos in cur_nts:
+                                            mutntseq += cur_nts[pos]
+
                                         startcodonpos = ((orfstartpos-1)//3)+1
                                         endcodonpos = ((orfendpos-1)//3)+1
                                         startmod = orfstartpos % 3
@@ -1435,14 +1438,12 @@ def fa_sam_parse(args, ref, file):
                                         mutAAseq = ''
                                         for i in range(0, (len(mutntseq)//3)):
                                             mutAAseq += aa_call(mutntseq[i*3:(i*3)+3])
+                                        if len(mutntseq) < len(wtntseq):
+                                            mutntseq += 'del'
+                                        elif len(mutntseq) > len(wtntseq):
+                                            mutntseq += 'insert'
                                         if len(mutntseq) % 3 != 0:
                                             mutAAseq += 'fs'
-                                        if len(mutAAseq) < len(wtAAseq):
-                                            mutAAseq += 'del'
-                                            mutntseq += 'del'
-                                        elif len(mutAAseq) > len(wtAAseq):
-                                            mutAAseq += 'insert'
-                                            mutntseq += 'insert'
                                         if startcodonpos == endcodonpos:
                                             newmutstring = f"{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}{mutAAseq})"
                                         else:
@@ -1732,13 +1733,13 @@ def gb_sam_parse(args, ref, file):
                             curMNP = ''
                             last_codon = -1
                             fshift = 0
-                            for mut in SNP_sequence.split(' '):
-                                startPos = int(mut.split('-')[0].strip('ATCGN'))
-                                endPos = startPos
-                                if 'del' in mut:
-                                    endPos = int(mut.split('-')[1].strip('del'))
-                                orflength = 0
-                                for rf in ref[3][orf]['reading frames']:
+                            for rf in ref[3][orf]['reading frames']:
+                                for mut in SNP_sequence.split(' '):
+                                    startPos = int(mut.split('-')[0].strip('ATCGN'))
+                                    endPos = startPos
+                                    if 'del' in mut:
+                                        endPos = int(mut.split('-')[1].strip('del'))
+                                    orflength = 0
                                     if startPos >= rf[0] and startPos <= rf[1]:
                                         orfstartpos = 1 + startPos - rf[0] + orflength
                                         orfendpos = 1 + endPos - rf[0] + orflength
@@ -1751,7 +1752,6 @@ def gb_sam_parse(args, ref, file):
                                             elif 'del' in mut:
                                                 mutshift -= len(mut.split('-')[0].strip('0123456789'))
                                             if not mutshift % 3 == 0:
-
                                                 if (fshift % 3) == 0:
                                                     if startcodon == last_codon:
                                                         curMNP.append([mut, orfstartpos])
@@ -1803,6 +1803,10 @@ def gb_sam_parse(args, ref, file):
                                                     fshift = 0
                                         else:
                                             curMNP = [[mut, orfstartpos]]
+                                            if 'insert' in mut:
+                                                fshift = len(mut.split('|')[0].split('insert')[1])
+                                            elif 'del' in mut:
+                                                fshift = len(mut.split('-')[0].strip('0123456789'))
                                         last_codon = endcodon
                                     elif endPos >= rf[0] and startPos <= rf[0]:
                                         if curMNP:
@@ -1832,22 +1836,21 @@ def gb_sam_parse(args, ref, file):
                                             if 'del' in entry[-1][0]:
                                                 orfendpos += len(entry[-1][0].split('-')[0].strip('0123456789')) - 1
 
-                                            for i in range(0, len(entry)):
-                                                curPM = entry[i][0]
-                                                if i > 0:
-                                                    if entry[i][1] > entry[i-1][1]:
-                                                        if 'insert' in entry[i-1][0]:
-                                                            mutntseq += ref[3][orf]['nts'][entry[i-1][1]-1:entry[i][1]-1]
-                                                        elif 'del' in entry[i-1][0]:
-                                                            mutntseq += ref[3][orf]['nts'][entry[i-1][1]+len(entry[i-1][0].split('-')[0].strip('0123456789'))-1:entry[i][1]-1]
-                                                        else:
-                                                            mutntseq += ref[3][orf]['nts'][entry[i-1][1]:entry[i][1]-1]
-                                                if 'insert' in curPM:
-                                                    mutntseq += curPM.split('|')[0].split('insert')[1]
-                                                elif 'del' in curPM:
-                                                    pass
+                                            cur_nts = {}
+
+                                            for i in range(orfstartpos, orfendpos+1):
+                                                cur_nts[i] = ref[3][orf]['nts'][i-1]
+                                            for curPM in entry:
+                                                if 'insert' in curPM[0]:
+                                                    cur_nts[curPM[1]] = curPM[0].split('insert')[-1] + cur_nts[curPM[1]]
+                                                elif 'del' in curPM[0]:
+                                                    for i in range(curPM[1], curPM[1]+len(curPM[0].split('-')[0].strip('0123456789'))):
+                                                        cur_nts[i] = ''
                                                 else:
-                                                    mutntseq += curPM[-1]
+                                                    cur_nts[curPM[1]] = curPM[0][-1]
+                                            for pos in cur_nts:
+                                                mutntseq += cur_nts[pos]
+
                                             startcodonpos = ((orfstartpos-1)//3)+1
                                             endcodonpos = ((orfendpos-1)//3)+1
                                             startmod = orfstartpos % 3
@@ -1878,18 +1881,18 @@ def gb_sam_parse(args, ref, file):
                                             mutAAseq = ''
                                             for i in range(0, (len(mutntseq)//3)):
                                                 mutAAseq += aa_call(mutntseq[i*3:(i*3)+3])
-                                            if len(mutntseq) % 3 != 0:
-                                                mutAAseq += 'fs'
-                                            if len(mutAAseq) < len(wtAAseq):
+                                            if len(mutntseq) < len(wtntseq):
                                                 mutAAseq += 'del'
                                                 mutntseq += 'del'
-                                            elif len(mutAAseq) > len(wtAAseq):
+                                            elif len(mutntseq) > len(wtntseq):
                                                 mutAAseq += 'insert'
                                                 mutntseq += 'insert'
+                                            if len(mutntseq) % 3 != 0:
+                                                mutAAseq += 'fs'
                                             if rf_end_del == 1:
                                                 mutAAseq += 'term/splice_distrupted'
                                                 mutntseq += 'term/splice_distrupted'
-                                            
+
                                             for curPM in entry:
                                                 if startcodonpos == endcodonpos:
                                                     newmut = f"({orf}:{wtntseq}{wtorfstartpos}-{wtorfendpos}{mutntseq}({wtAAseq}{startcodonpos}{mutAAseq}))"
