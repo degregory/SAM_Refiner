@@ -11,12 +11,19 @@ import argparse
 import itertools
 from multiprocessing import Process, Pool
 
+bc = False
+try:
+    import pysam
+    pysam.set_verbosity(0)
+    bc = True
+except:
+    print("Failed to import pysam.  Processing of bams/crams skipped")
+
 
 """
 To Do:
 replace none atcgn- nt calls function
 handle snp '-' deletion in MNP processing
-use all seq in fasta for references
 Clean up / polish / add comments
 add --verbose --quiet options
 """
@@ -252,8 +259,7 @@ def arg_parser():
     parser.add_argument(
         '--mp',
         type=int,
-        default=3,
-        choices=range(1,21),
+        default=4,
         help='set number of processes SAM Refiner will run in parallel, default = 4 (--mp 4)'
     )
 
@@ -581,7 +587,7 @@ def sam_line_parser(args, ref, file):
     the total count of reads mapped to the reference, and a dictionary for coverage of each position
     """
 
-    samp=file[0: -4]
+    samp=file.replace(file.split(".")[-1], '')[:-1]
     nt_call_dict_dict = {}
     ins_nt_dict = {}
     reads_list = []
@@ -589,12 +595,25 @@ def sam_line_parser(args, ref, file):
     sam_read_count = 0
     sam_line_count = 0
     coverage = {}
-
-    sam_fh = open(file, "r")
+    
+    comped = False
+    if file.lower().endswith(".sam"):
+        sam_fh = open(file, "r")
+    elif file.lower().endswith(".bam"):
+        sam_fh = pysam.AlignmentFile(file, "rb")
+        comped = True
+    elif file.lower().endswith(".cram"):
+        sam_fh = pysam.AlignmentFile(file, "rc")
+        comped = True
+    if comped and not bc:
+        print("bam/cram parsing failed.  need to install pysam")
+        return
     for line in sam_fh:
+        if comped:
+            line = str(line)
         if not line.startswith('@'): # ignore header lines
             split_line = line.split("\t")
-            if ref[0].upper() == split_line[2].upper(): # check map ID matches referecne ID
+            if ref[0].upper() == split_line[2].upper() or comped: # check map ID matches referecne ID
                 if int(split_line[4]) > 0:  # Check mapping score is positive
 
                     sam_line_count += 1
@@ -1282,7 +1301,7 @@ def fa_sam_parse(args, ref, file):
     Returns nothing
     """
 
-    samp=file[0: -4]
+    samp=file.replace(file.split(".")[-1], '')[:-1]
     print(f"Starting {samp} processing")
     nt_call_dict_dict, ins_nt_dict, reads_list, col_reads, sam_read_count, coverage = sam_line_parser(args, ref, file)
 
@@ -1703,7 +1722,7 @@ def gb_sam_parse(args, ref, file):
     Returns nothing
     """
 
-    samp=file[0: -4]
+    samp=file.replace(file.split(".")[-1], '')[:-1]
     print(f"Starting {samp} processing")
     nt_call_dict_dict, ins_nt_dict, reads_list, col_reads, sam_read_count, coverage = sam_line_parser(args, ref, file)
 
@@ -1733,13 +1752,13 @@ def gb_sam_parse(args, ref, file):
                             curMNP = ''
                             last_codon = -1
                             fshift = 0
+                            orflength = 0
                             for rf in ref[3][orf]['reading frames']:
                                 for mut in SNP_sequence.split(' '):
                                     startPos = int(mut.split('-')[0].strip('ATCGN'))
                                     endPos = startPos
                                     if 'del' in mut:
                                         endPos = int(mut.split('-')[1].strip('del'))
-                                    orflength = 0
                                     if startPos >= rf[0] and startPos <= rf[1]:
                                         orfstartpos = 1 + startPos - rf[0] + orflength
                                         orfendpos = 1 + endPos - rf[0] + orflength
@@ -2754,13 +2773,16 @@ def main():
                 args.Sam_files[0]
             except:
                 for file in os.listdir(os.getcwd()):
-                    if (file.lower()).endswith('.sam'):
+                    if file.lower().endswith('.sam'):
+                        SAMs.append(file)
+                    elif bc and (file.lower().endswith('.bam') or file.lower().endswith('.cram')):
                         SAMs.append(file)
             else:
                 for files in args.Sam_files:
                     for file in files:
                         if os.path.isfile(file):
-                            SAMs.append(file)
+                            if file.lower().endswith(".sam") or (bc and (file.lower().endswith('.bam') or file.lower().endswith('.cram'))):
+                                SAMs.append(file)
                         else:
                             print(f"Can't find {file}, skipping")
 
