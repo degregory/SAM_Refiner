@@ -595,7 +595,7 @@ def sam_line_parser(args, ref, file):
     sam_read_count = 0
     sam_line_count = 0
     coverage = {}
-    
+
     comped = False
     if file.lower().endswith(".sam"):
         sam_fh = open(file, "r")
@@ -1832,7 +1832,7 @@ def gb_sam_parse(args, ref, file):
                                             MNPs.append(curMNP)
                                         MNPs.append([[mut, -1]])
                                         curMNP = ''
-                                    orflength += rf[1] - rf[0] + 1
+                                orflength += rf[1] - rf[0] + 1
                             if curMNP:
                                 MNPs.append(curMNP)
 
