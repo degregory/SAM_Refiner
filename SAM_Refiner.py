@@ -587,7 +587,7 @@ def sam_line_parser(args, ref, file):
     the total count of reads mapped to the reference, and a dictionary for coverage of each position
     """
 
-    samp=file.replace(file.split(".")[-1], '')[:-1]
+    samp=".".join(file.split('.')[:-1])
     nt_call_dict_dict = {}
     ins_nt_dict = {}
     reads_list = []
@@ -1301,7 +1301,7 @@ def fa_sam_parse(args, ref, file):
     Returns nothing
     """
 
-    samp=file.replace(file.split(".")[-1], '')[:-1]
+    samp=".".join(file.split('.')[:-1])
     print(f"Starting {samp} processing")
     nt_call_dict_dict, ins_nt_dict, reads_list, col_reads, sam_read_count, coverage = sam_line_parser(args, ref, file)
 
@@ -1722,7 +1722,7 @@ def gb_sam_parse(args, ref, file):
     Returns nothing
     """
 
-    samp=file.replace(file.split(".")[-1], '')[:-1]
+    samp=".".join(file.split('.')[:-1])
     print(f"Starting {samp} processing")
     nt_call_dict_dict, ins_nt_dict, reads_list, col_reads, sam_read_count, coverage = sam_line_parser(args, ref, file)
 
