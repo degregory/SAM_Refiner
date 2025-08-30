@@ -1247,7 +1247,10 @@ def print_covars(samp, sam_read_count, col_reads, coverage, args, aa_centered):
                                 startcovPos = aa_centered[splitcombos[0]][0]
                                 endcovPos = aa_centered[splitcombos[-1]][-1]
                             if startcovPos == endcovPos:
-                                abund = combinations[key] / coverage[int(startcovPos)]
+                                try:
+                                    abund = combinations[key] / coverage[int(startcovPos)]
+                                except:
+                                    abund = combinations[key] / coverage[int(startcovPos)-1]
 
                             elif args.covar_tile_coverage == 0:
                                 coveragevals = []
@@ -2806,16 +2809,46 @@ def main():
                         else:
                             print(f"Can't find {file}, skipping")
 
+            '''
+            check for duplicates in SAM file list
+            exit if dups found
+            '''
+            file_bases = []
+            for SAM in SAMs:
+                file_bases.append(".".join(SAM.split('.')[:-1]))
+            if not len(file_bases) == len(set(file_bases)):
+                print("Duplicate samples (file names) as sam, bam and or cram files.  Please remove all but one or rename")
+                exit(1)
+
             args.ref = ''
             if ref[2] == 'fasta':
                 with Pool(processes=args.mp) as pool:
-                    pool.starmap(fa_sam_parse, zip(itertools.repeat(args), itertools.repeat(ref), SAMs))
+                    
+                    procings = []
+
+                    for SAM in SAMs:
+                        proc = pool.apply_async(fa_sam_parse, (args, ref, SAM, ))
+                        procings.append(proc)
+
+                    for proc in procings:
+                        proc.get()
+
+                    pool.close()
+                    pool.join()
+
             elif ref[2] == 'gb':
-                if len(SAMs) == 1:
-                    gb_sam_parse(args, ref, SAMs[0])
-                else:
-                    with Pool(processes=args.mp) as pool:
-                        pool.starmap(gb_sam_parse, zip(itertools.repeat(args), itertools.repeat(ref), SAMs))
+                with Pool(processes=args.mp) as pool:
+                    procings = []
+
+                    for SAM in SAMs:
+                        proc = pool.apply_async(gb_sam_parse, (args, ref, SAM, ))
+                        procings.append(proc)
+
+                    for proc in procings:
+                        proc.get()
+
+                    pool.close()
+                    pool.join()
             print(f"End Sam Parsing Output")
     else:
         print('No reference provided, skipping SAM parsing')
@@ -2828,7 +2861,18 @@ def main():
             if file.endswith('_seqs.tsv'): # get unique sequence files for chimera removal
                 seq_files.append(file[0:-16])
         with Pool(processes=args.mp) as pool:
-            pool.starmap(chim_process, zip(itertools.repeat(args), seq_files))
+            procings = []
+
+            for seq_file in seq_files:
+                proc = pool.apply_async(chim_process, (args, seq_file, ))
+                procings.append(proc)
+
+            for proc in procings:
+                proc.get()
+
+            pool.close()
+            pool.join()
+            # pool.starmap(chim_process, zip(itertools.repeat(args), seq_files))
 
 # begin collection of sample outputs
     if args.collect == 1:
